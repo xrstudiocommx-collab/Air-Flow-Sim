@@ -18,7 +18,8 @@ import {
   Download, 
   Upload, 
   Loader2,
-  ArrowLeft
+  ArrowLeft,
+  Settings as SettingsIcon
 } from "lucide-react";
 import { ProjectData } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
@@ -147,7 +148,7 @@ export default function Workspace() {
             {/* Simulation Settings */}
             <div className="space-y-4">
               <h3 className="text-sm font-medium text-foreground flex items-center gap-2">
-                <Settings className="w-4 h-4" /> Simulation Params
+                <SettingsIcon className="w-4 h-4" /> Simulation Params
               </h3>
               
               <div className="space-y-3">

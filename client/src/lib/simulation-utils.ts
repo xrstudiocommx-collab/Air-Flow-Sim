@@ -1,6 +1,6 @@
 import { type Fan, type Obstacle } from "@shared/schema";
 import { scaleLinear } from "d3-scale";
-import { interpolateTurbo } from "d3-interpolate";
+import { interpolateTurbo } from "d3-scale-chromatic";
 
 // Basic geometry types
 interface Point { x: number; y: number; }
