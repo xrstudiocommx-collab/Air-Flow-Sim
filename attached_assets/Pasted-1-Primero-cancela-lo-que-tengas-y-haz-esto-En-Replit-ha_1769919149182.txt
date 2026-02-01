@@ -1,0 +1,180 @@
+1. Primero, cancela lo que tengas y haz esto:
+En Replit, haz clic en:
+
+"Tools" (herramientas) en la barra lateral izquierda
+
+"Shell" (consola)
+
+2. Crea los archivos manualmente en la Shell:
+bash
+# 1. Crea el archivo requirements.txt
+cat > requirements.txt << 'EOF'
+streamlit==1.28.0
+numpy==1.24.3
+opencv-python-headless==4.8.1.78
+Pillow==10.0.1
+matplotlib==3.7.2
+pandas==2.1.3
+streamlit-drawable-canvas==0.9.3
+EOF
+
+# 2. Crea el archivo .replit (IMPORTANTE)
+cat > .replit << 'EOF'
+language = "python3"
+run = "pip install -r requirements.txt && streamlit run app.py --server.port 8501 --server.address 0.0.0.0 --server.enableCORS=false --server.enableXsrfProtection=false"
+EOF
+
+# 3. Crea el archivo app.py inicial
+cat > app.py << 'EOF'
+import streamlit as st
+import numpy as np
+from PIL import Image
+import matplotlib.pyplot as plt
+import io
+
+st.set_page_config(layout="wide", page_title="Simulador de Flujo de Aire")
+st.title("🌬️ Simulador de Flujo de Aire Industrial")
+
+# Inicializar estado de la sesión
+if 'fans' not in st.session_state:
+    st.session_state.fans = []
+if 'obstacles' not in st.session_state:
+    st.session_state.obstacles = []
+
+# Sidebar
+with st.sidebar:
+    st.header("⚙️ Configuración")
+    
+    uploaded_file = st.file_uploader("Subir plano arquitectónico", 
+                                     type=['png', 'jpg', 'jpeg'])
+    
+    st.subheader("Parámetros de Simulación")
+    max_radius = st.slider("Radio de dispersión", 100, 1000, 400)
+    base_intensity = st.slider("Intensidad inicial", 1.0, 20.0, 10.0)
+    decay = st.slider("Tasa de decaimiento", 0.01, 0.3, 0.08)
+    
+    if st.button("🧹 Limpiar Todo"):
+        st.session_state.fans = []
+        st.session_state.obstacles = []
+        st.rerun()
+
+# Contenido principal
+col1, col2 = st.columns([3, 2])
+
+with col1:
+    st.subheader("📐 Plano y Configuración")
+    
+    if uploaded_file:
+        image = Image.open(uploaded_file)
+        st.image(image, use_column_width=True, caption="Plano cargado")
+        
+        # Simulación simple
+        if st.button("▶️ Ejecutar Simulación"):
+            with st.spinner("Calculando flujo de aire..."):
+                # Crear un grid simple para demostración
+                height, width = 400, 600
+                x = np.linspace(0, width, width)
+                y = np.linspace(0, height, height)
+                X, Y = np.meshgrid(x, y)
+                
+                # Simular un ventilador en el centro
+                center_x, center_y = width//2, height//2
+                distance = np.sqrt((X - center_x)**2 + (Y - center_y)**2)
+                
+                # Aplicar decaimiento exponencial
+                intensity = base_intensity * np.exp(-distance / (max_radius * decay))
+                intensity[distance > max_radius] = 0
+                
+                # Crear mapa de calor
+                fig, ax = plt.subplots(figsize=(10, 8))
+                heatmap = ax.imshow(intensity, cmap='hot', alpha=0.7, 
+                                   extent=[0, width, height, 0])
+                ax.set_title("Mapa de Calor - Flujo de Aire")
+                ax.set_xlabel("Posición X")
+                ax.set_ylabel("Posición Y")
+                plt.colorbar(heatmap, ax=ax, label='Intensidad del flujo')
+                
+                st.pyplot(fig)
+                
+                # Botones de exportación
+                st.subheader("📤 Exportar Resultados")
+                col_exp1, col_exp2 = st.columns(2)
+                
+                with col_exp1:
+                    # Guardar figura
+                    buf = io.BytesIO()
+                    fig.savefig(buf, format='png', dpi=150)
+                    buf.seek(0)
+                    
+                    st.download_button(
+                        label="📥 Descargar Imagen (PNG)",
+                        data=buf,
+                        file_name="simulacion_flujo.png",
+                        mime="image/png"
+                    )
+                
+                with col_exp2:
+                    # Crear datos de ejemplo
+                    import pandas as pd
+                    df = pd.DataFrame({
+                        'x': X.flatten()[::100],  # Muestra cada 100 puntos
+                        'y': Y.flatten()[::100],
+                        'intensidad': intensity.flatten()[::100]
+                    })
+                    
+                    csv = df.to_csv(index=False)
+                    st.download_button(
+                        label="📊 Descargar Datos (CSV)",
+                        data=csv,
+                        file_name="datos_simulacion.csv",
+                        mime="text/csv"
+                    )
+    else:
+        st.info("👈 Por favor, sube un plano arquitectónico desde el panel lateral")
+
+with col2:
+    st.subheader("📋 Instrucciones")
+    st.markdown("""
+    1. **Sube un plano** desde el panel lateral
+    2. **Configura los parámetros** de simulación:
+       - Radio de dispersión
+       - Intensidad inicial  
+       - Tasa de decaimiento
+    3. **Haz clic en 'Ejecutar Simulación'**
+    4. **Exporta** los resultados como imagen o datos
+    
+    *Próximas funciones:*
+    - Dibujar ventiladores directamente en la imagen
+    - Añadir obstáculos personalizados
+    - Simulación con múltiples ventiladores
+    """)
+
+st.markdown("---")
+st.caption("Simulador de Flujo de Aire v1.0 | Desarrollado para análisis industrial")
+EOF
+3. Crea un archivo replit.nix (opcional pero recomendado):
+bash
+cat > replit.nix << 'EOF'
+{ pkgs }: {
+  deps = [
+    pkgs.python310
+    pkgs.python310Packages.pip
+    pkgs.python310Packages.virtualenv
+    pkgs.libGL
+    pkgs.libGLU
+  ];
+}
+EOF
+4. Ejecuta la aplicación:
+Haz clic en el botón "Run" (verde) en la parte superior
+
+Espera a que se instalen las dependencias (puede tomar 1-2 minutos)
+
+La aplicación se abrirá en una nueva pestaña
+
+5. Si ves error de puerto:
+En la Shell, ejecuta:
+
+bash
+pkill -f streamlit
+Luego haz clic en "Run" nuevamente.
