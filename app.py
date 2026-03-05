@@ -116,7 +116,6 @@ def main():
             stroke_width=2,
             stroke_color="#000000",
             background_image=bg_image,
-            update_freq=100,
             width=w,
             height=h,
             drawing_mode=drawing_mode,
