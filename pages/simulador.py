@@ -1,12 +1,13 @@
 import streamlit as st
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageDraw
 import matplotlib.pyplot as plt
 import matplotlib
 matplotlib.use("Agg")
 from matplotlib.colors import LinearSegmentedColormap
 import io
 import os
+import json
 import pandas as pd
 from datetime import datetime
 from streamlit_drawable_canvas import st_canvas
@@ -23,11 +24,69 @@ from utils.db import create_proyecto, update_proyecto, get_users_by_role
 from utils.auth import get_current_user
 
 
+def _init_state():
+    if "sim_canvas_key" not in st.session_state:
+        st.session_state["sim_canvas_key"] = "sim_canvas"
+    if "saved_obstacles" not in st.session_state:
+        st.session_state["saved_obstacles"] = []
+    if "polygon_points_temp" not in st.session_state:
+        st.session_state["polygon_points_temp"] = []
+    if "drawing_polygon" not in st.session_state:
+        st.session_state["drawing_polygon"] = False
+
+
+def _build_initial_drawing(w, h, saved_obstacles):
+    objects = []
+    for obs in saved_obstacles:
+        pts = obs["points"]
+        if len(pts) < 3:
+            continue
+        fabric_pts = []
+        min_x = min(p[0] for p in pts)
+        min_y = min(p[1] for p in pts)
+        for p in pts:
+            fabric_pts.append({"x": p[0] - min_x, "y": p[1] - min_y})
+        size_label = obs.get("size", "XL")
+        color_map = {"Ch": "#00CC00", "M": "#FFAA00", "G": "#FF6600", "XL": "#FF0000"}
+        stroke = color_map.get(size_label, "#FF0000")
+        objects.append({
+            "type": "polygon",
+            "left": min_x,
+            "top": min_y,
+            "fill": "rgba(255,0,0,0.15)",
+            "stroke": stroke,
+            "strokeWidth": 2,
+            "points": fabric_pts,
+            "scaleX": 1,
+            "scaleY": 1,
+            "angle": 0,
+            "selectable": False,
+            "evented": False,
+        })
+    return {"version": "4.4.0", "objects": objects}
+
+
+def _draw_polygon_preview(bg_image, temp_points):
+    overlay = bg_image.copy()
+    draw = ImageDraw.Draw(overlay)
+    r = 4
+    for px, py in temp_points:
+        draw.ellipse([px - r, py - r, px + r, py + r], fill="red", outline="white")
+    if len(temp_points) >= 2:
+        flat = []
+        for p in temp_points:
+            flat.append((int(p[0]), int(p[1])))
+        draw.line(flat, fill="red", width=2)
+    return overlay
+
+
 def render():
     user = get_current_user()
     if not user or user["role"] not in ("superadmin", "admin"):
         st.error("Acceso denegado.")
         return
+
+    _init_state()
 
     st.title("Simulador de Flujo de Aire")
 
@@ -41,26 +100,89 @@ def render():
 
         st.divider()
         st.subheader("Herramientas de Dibujo")
-        drawing_mode = st.radio(
+        tool_options = ["transform", "circle", "rect", "polygon_tool"]
+        tool_labels = {
+            "transform": "Seleccionar/Mover",
+            "circle": "Abanico Techo (Circulo)",
+            "rect": "Abanico Pedestal (Rectangulo/Ovalo)",
+            "polygon_tool": "Obstaculo (Poligono)",
+        }
+        selected_tool = st.radio(
             "Modo:",
-            ("transform", "circle", "rect", "polygon"),
-            format_func=lambda x: {
-                "transform": "Seleccionar/Mover",
-                "circle": "Abanico Techo (Circulo)",
-                "rect": "Abanico Pedestal (Rectangulo/Ovalo)",
-                "polygon": "Obstaculo (Poligono)",
-            }[x],
+            tool_options,
+            format_func=lambda x: tool_labels[x],
         )
 
-        stroke_color = "#FF6600" if drawing_mode == "circle" else (
-            "#00AAFF" if drawing_mode == "rect" else "#FF0000"
-        )
+        is_polygon_mode = selected_tool == "polygon_tool"
+
+        if is_polygon_mode:
+            drawing_mode = "point"
+            stroke_color = "#FF0000"
+        else:
+            drawing_mode = selected_tool
+            stroke_color = "#FF6600" if selected_tool == "circle" else (
+                "#00AAFF" if selected_tool == "rect" else "#FF0000"
+            )
+
+        if is_polygon_mode:
+            st.divider()
+            st.subheader("Dibujo de Obstaculo")
+            temp_pts = st.session_state["polygon_points_temp"]
+            st.caption(f"Puntos actuales: {len(temp_pts)}")
+            if len(temp_pts) >= 3:
+                obs_size_temp = st.selectbox(
+                    "Tamano del obstaculo",
+                    ["Ch", "M", "G", "XL"],
+                    index=3,
+                    key="new_obs_size",
+                )
+                if st.button("Finalizar y Guardar Obstaculo", type="primary"):
+                    st.session_state["saved_obstacles"].append({
+                        "points": list(temp_pts),
+                        "size": obs_size_temp,
+                        "transmission": SIZE_TRANSMISSION[obs_size_temp],
+                    })
+                    st.session_state["polygon_points_temp"] = []
+                    st.session_state["sim_canvas_key"] = f"canvas_{np.random.randint(0, 1000000)}"
+                    st.rerun()
+            elif len(temp_pts) > 0:
+                st.info("Necesitas al menos 3 puntos para formar un obstaculo.")
+            if st.button("Cancelar Poligono"):
+                st.session_state["polygon_points_temp"] = []
+                st.session_state["sim_canvas_key"] = f"canvas_{np.random.randint(0, 1000000)}"
+                st.rerun()
+
+        if len(st.session_state["saved_obstacles"]) > 0:
+            st.divider()
+            st.subheader("Obstaculos Guardados")
+            for i, obs in enumerate(st.session_state["saved_obstacles"]):
+                cols = st.columns([2, 1, 1])
+                with cols[0]:
+                    st.write(f"Obstaculo {i + 1} ({len(obs['points'])} vertices)")
+                with cols[1]:
+                    new_size = st.selectbox(
+                        f"Tam {i+1}",
+                        ["Ch", "M", "G", "XL"],
+                        index=["Ch", "M", "G", "XL"].index(obs["size"]),
+                        key=f"saved_obs_size_{i}",
+                        label_visibility="collapsed",
+                    )
+                    if new_size != obs["size"]:
+                        st.session_state["saved_obstacles"][i]["size"] = new_size
+                        st.session_state["saved_obstacles"][i]["transmission"] = SIZE_TRANSMISSION[new_size]
+                with cols[2]:
+                    if st.button("X", key=f"del_obs_{i}"):
+                        st.session_state["saved_obstacles"].pop(i)
+                        st.session_state["sim_canvas_key"] = f"canvas_{np.random.randint(0, 1000000)}"
+                        st.rerun()
 
         st.divider()
-        if st.button("Limpiar Canvas"):
+        if st.button("Limpiar Todo"):
             st.session_state["sim_canvas_key"] = f"canvas_{np.random.randint(0, 1000000)}"
+            st.session_state["saved_obstacles"] = []
+            st.session_state["polygon_points_temp"] = []
             for k in list(st.session_state.keys()):
-                if k.startswith("obstacle_sizes"):
+                if k.startswith("obstacle_sizes") or k.startswith("saved_obs_size_"):
                     del st.session_state[k]
             if "sim_bg_image" in st.session_state:
                 del st.session_state["sim_bg_image"]
@@ -93,49 +215,62 @@ def render():
     h = st.session_state["sim_img_h"]
 
     st.subheader("Dibuja ventiladores y obstaculos")
-    st.caption("Circulo = abanico techo | Rectangulo = abanico pedestal (AirFree) | Poligono = obstaculo")
 
-    canvas_result = st_canvas(
-        fill_color="rgba(255, 165, 0, 0.2)",
-        stroke_width=2,
-        stroke_color=stroke_color,
-        background_color="#ffffff",
-        background_image=bg_image,
-        width=w,
-        height=h,
-        drawing_mode=drawing_mode,
-        key=str(st.session_state.get("sim_canvas_key", "sim_canvas")),
-        display_toolbar=True,
-    )
+    if is_polygon_mode:
+        temp_pts = st.session_state["polygon_points_temp"]
+        st.caption("Haz clic en el canvas para agregar vertices del obstaculo. Usa 'Finalizar y Guardar' en el sidebar cuando tengas al menos 3 puntos.")
+        preview_img = _draw_polygon_preview(bg_image, temp_pts)
+        initial = _build_initial_drawing(w, h, st.session_state["saved_obstacles"])
+        canvas_result = st_canvas(
+            fill_color="rgba(255, 0, 0, 0.3)",
+            stroke_width=3,
+            stroke_color="#FF0000",
+            background_color="#ffffff",
+            background_image=preview_img,
+            width=w,
+            height=h,
+            drawing_mode="point",
+            point_display_radius=5,
+            key=str(st.session_state["sim_canvas_key"]) + "_poly",
+            display_toolbar=False,
+        )
+        if canvas_result.json_data is not None:
+            point_objects = canvas_result.json_data.get("objects", [])
+            new_points = []
+            for obj in point_objects:
+                if obj.get("type") == "circle":
+                    cx = obj.get("left", 0) + obj.get("radius", 0)
+                    cy = obj.get("top", 0) + obj.get("radius", 0)
+                    new_points.append([cx, cy])
+            if len(new_points) > len(temp_pts):
+                st.session_state["polygon_points_temp"] = new_points
+                st.rerun()
+    else:
+        st.caption("Circulo = abanico techo | Rectangulo = abanico pedestal (AirFree)")
+        initial = _build_initial_drawing(w, h, st.session_state["saved_obstacles"])
+        canvas_result = st_canvas(
+            fill_color="rgba(255, 165, 0, 0.2)",
+            stroke_width=2,
+            stroke_color=stroke_color,
+            background_color="#ffffff",
+            background_image=bg_image,
+            width=w,
+            height=h,
+            drawing_mode=drawing_mode,
+            initial_drawing=initial if len(initial["objects"]) > 0 else None,
+            key=str(st.session_state["sim_canvas_key"]),
+            display_toolbar=True,
+        )
 
     if canvas_result.json_data is None:
         return
 
     objects = canvas_result.json_data.get("objects", [])
-    fans_circ, fans_oval, obstacles = parse_canvas_objects(objects)
+    fans_circ, fans_oval, canvas_obstacles = parse_canvas_objects(objects)
 
-    if "obstacle_sizes" not in st.session_state:
-        st.session_state["obstacle_sizes"] = {}
+    all_obstacles = list(st.session_state["saved_obstacles"])
 
-    if len(obstacles) > 0:
-        st.subheader("Configurar obstaculos")
-        for i, obs in enumerate(obstacles):
-            key = f"obs_size_{i}"
-            cols = st.columns([3, 1])
-            with cols[0]:
-                st.write(f"Obstaculo {i + 1}")
-            with cols[1]:
-                prev_size = st.session_state.get(f"obstacle_sizes_{i}", "XL")
-                size = st.selectbox(
-                    f"Tamano {i+1}",
-                    ["Ch", "M", "G", "XL"],
-                    index=["Ch", "M", "G", "XL"].index(prev_size),
-                    key=key,
-                    label_visibility="collapsed",
-                )
-                st.session_state[f"obstacle_sizes_{i}"] = size
-                obs["size"] = size
-                obs["transmission"] = SIZE_TRANSMISSION[size]
+    total_obstacles = len(all_obstacles)
 
     col_m1, col_m2, col_m3 = st.columns(3)
     with col_m1:
@@ -143,7 +278,7 @@ def render():
     with col_m2:
         st.metric("Abanicos Pedestal", len(fans_oval))
     with col_m3:
-        st.metric("Obstaculos", len(obstacles))
+        st.metric("Obstaculos", total_obstacles)
 
     if st.button("Generar Mapa de Calor", type="primary"):
         total_fans = len(fans_circ) + len(fans_oval)
@@ -151,13 +286,21 @@ def render():
             st.warning("Dibuja al menos un ventilador antes de simular.")
             return
 
+        sim_obstacles = []
+        for obs in all_obstacles:
+            sim_obstacles.append({
+                "points": np.array(obs["points"], dtype=np.int32),
+                "size": obs["size"],
+                "transmission": obs["transmission"],
+            })
+
         progress_bar = st.progress(0, text="Calculando flujo de aire...")
 
         def update_progress(val):
             progress_bar.progress(min(val, 1.0), text=f"Procesando ventilador... {int(val * 100)}%")
 
         total_intensity, sim_w, sim_h, xl_shadow = run_simulation(
-            fans_circ, fans_oval, obstacles,
+            fans_circ, fans_oval, sim_obstacles,
             w, h, decay_rate, multiplier, resolution, use_los,
             progress_callback=update_progress,
         )
@@ -182,6 +325,21 @@ def render():
             shadow_rgba[xl_shadow, 0] = 1.0
             shadow_rgba[xl_shadow, 3] = 0.5
             ax.imshow(shadow_rgba, extent=[0, w, h, 0], interpolation="bilinear")
+
+        for obs in all_obstacles:
+            pts = obs["points"]
+            if len(pts) >= 3:
+                poly_x = [p[0] for p in pts] + [pts[0][0]]
+                poly_y = [p[1] for p in pts] + [pts[0][1]]
+                size_label = obs.get("size", "XL")
+                color_map = {"Ch": "#00CC00", "M": "#FFAA00", "G": "#FF6600", "XL": "#FF0000"}
+                ax.plot(poly_x, poly_y, color=color_map.get(size_label, "#FF0000"),
+                        linewidth=2, linestyle="--")
+                cx = sum(p[0] for p in pts) / len(pts)
+                cy = sum(p[1] for p in pts) / len(pts)
+                ax.text(cx, cy, size_label, ha="center", va="center",
+                        fontsize=8, fontweight="bold", color="white",
+                        bbox=dict(boxstyle="round,pad=0.2", facecolor=color_map.get(size_label, "red"), alpha=0.7))
 
         ax.axis("off")
         cbar = plt.colorbar(im, ax=ax, shrink=0.8)

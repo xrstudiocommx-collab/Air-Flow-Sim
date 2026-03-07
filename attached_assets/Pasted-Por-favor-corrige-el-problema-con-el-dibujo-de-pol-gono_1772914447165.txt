@@ -1,0 +1,37 @@
+Por favor, corrige el problema con el dibujo de polígonos (obstáculos) en el canvas. Actualmente, al seleccionar la herramienta de polígono y dibujar, no se puede finalizar la figura (ni con doble clic, ni con ningún otro método). Además, al mover el mouse y hacer clic en otro lugar, se sigue agregando puntos, lo que impide cerrar el polígono correctamente. Esto hace que la funcionalidad de obstáculos no sea usable.
+
+## Requisitos para solucionar el problema:
+
+1. **Verificar la configuración del canvas para modo polígono**:
+   - Asegúrate de que cuando el usuario selecciona la herramienta "Obstáculo" (polígono), el parámetro `drawing_mode` del canvas sea `"polygon"`.
+   - Revisa la documentación de `streamlit-drawable-canvas` para confirmar que el modo `"polygon"` finaliza correctamente con doble clic o al hacer clic en el punto inicial. Si no es así, considera cambiar a `"freedraw"` pero eso no es adecuado. La versión actual (0.9.3) soporta polígonos.
+
+2. **Añadir un botón "Finalizar polígono"**:
+   - Para dar control explícito al usuario, agrega un botón en el sidebar (o cerca del canvas) que diga **"Finalizar polígono actual"**.
+   - Este botón debe tomar los puntos dibujados hasta el momento (almacenados en `canvas_result.json_data`), cerrar el polígono (uniendo el último punto con el primero) y guardarlo como un objeto en `st.session_state["obstacles"]`.
+   - Después de guardar, limpia el canvas (reinicia el dibujo) o cambia temporalmente el modo para que no se sigan agregando puntos.
+
+3. **Manejo de persistencia y claves del canvas**:
+   - El problema podría deberse a que el canvas se re-renderiza con cada interacción, perdiendo el estado de dibujo. Asegura que la clave (`key`) del canvas sea estable mientras se está dibujando (por ejemplo, no cambiar la clave durante el proceso de dibujo de un polígono). Si es necesario, usa un flag en `st.session_state` para saber si se está dibujando un polígono y evitar cambios de clave.
+   - Almacena los puntos temporalmente en `st.session_state` mientras se dibuja, para no perderlos si hay un rerun.
+
+4. **Flujo de trabajo propuesto**:
+   - El usuario selecciona "Obstáculo (polígono)" en el sidebar.
+   - El canvas se configura en modo `"polygon"` con una clave fija (por ejemplo, `key="canvas_polygon"`).
+   - El usuario hace clics para agregar vértices. Con cada clic, el canvas devuelve el dibujo actual en `canvas_result.json_data`. Puedes extraer los puntos de ese JSON y guardarlos en `st.session_state["polygon_points_temp"]`.
+   - Cuando el usuario hace doble clic (si el canvas lo soporta) O presiona el botón "Finalizar polígono", se toman los puntos, se cierra el polígono (agregando el primero al final si es necesario) y se guarda como obstáculo con su tamaño seleccionado.
+   - Luego se limpia el canvas (por ejemplo, cambiando temporalmente a modo `"view"` y volviendo a `"polygon"` con una nueva clave, o reiniciando el estado del canvas). Una opción es guardar el polígono y luego establecer `drawing_mode = "view"` para que no se siga dibujando, y luego permitir al usuario volver a modo polígono con otro botón.
+
+5. **Asignación de tamaño al obstáculo**:
+   - Después de dibujar el polígono, muestra un selector de tamaño (Ch, M, G, XL) en el sidebar y un botón "Guardar obstáculo" para confirmar.
+   - Al guardar, almacena en `st.session_state["obstacles"]` el polígono con su tipo, vértices y tamaño/factor.
+
+6. **Validación**:
+   - Prueba el flujo: dibuja un polígono de 4 lados, haz clic en "Finalizar polígono", asigna tamaño, y verifica que aparezca en la lista de obstáculos (puedes listarlos en el sidebar) y que se muestre en el canvas (si el canvas soporta mostrar objetos guardados, usa `initial_drawing` para restaurarlos).
+   - Asegura que al generar el mapa de calor, estos polígonos afecten el flujo según su factor de transmisión.
+
+7. **Mantén el resto de funcionalidades**:
+   - No alteres el sistema de autenticación, roles, gestión de proyectos, etc.
+   - Conserva el colormap invertido (azul = alta intensidad) y la capa roja para obstáculos XL (sombra trasera) si ya está implementada.
+
+Implementa estos cambios con cuidado y añade comentarios en el código para explicar el flujo de dibujo de polígonos. Asegura que la aplicación siga funcionando en Replit sin errores.
