@@ -1,0 +1,124 @@
+Por favor, realiza las siguientes mejoras en la aplicación para que el menú lateral (sidebar) solo sea visible después de que el usuario haya iniciado sesión correctamente, y que las opciones mostradas dependan del rol del usuario (superadmin, admin, cliente). Además, incorpora un selector de tema (oscuro/claro) que afecte a toda la interfaz.
+
+## Requisitos detallados:
+
+### 1. Estructura actual y punto de partida
+- Actualmente, la aplicación tiene un login simple en la pantalla principal (app.py) que muestra campos de usuario y contraseña, y al hacer clic en "Entrar" se autentica contra una base de datos SQLite (tabla `users`). Existen funciones en `utils/auth.py` para verificar credenciales y obtener el rol del usuario.
+- Después del login, se redirige a alguna página (probablemente se usa `st.switch_page` o se cambia el contenido según estado de sesión). Sin embargo, el menú lateral (sidebar) se muestra siempre (incluso sin login) y contiene enlaces a las diferentes secciones.
+- Se requiere que el sidebar solo aparezca después del login y que sus opciones sean dinámicas según el rol.
+
+### 2. Flujo de autenticación y redirección
+- En `app.py`, después de validar las credenciales, se debe almacenar en `st.session_state` el usuario autenticado y su rol (por ejemplo, `st.session_state["authenticated"] = True`, `st.session_state["role"] = rol`, `st.session_state["username"] = username`).
+- Si el usuario no está autenticado, el sidebar no debe mostrarse (o debe mostrarse vacío). En su lugar, solo se ve el formulario de login.
+- Una vez autenticado, se debe mostrar el sidebar con las opciones correspondientes, y el contenido principal debe ser la página que corresponde a la opción seleccionada (por defecto, la página de simulación para admin/superadmin, o la de "Mis Planos" para cliente).
+
+### 3. Menú lateral por rol
+- Las opciones del sidebar deben generarse dinámicamente según `st.session_state["role"]`:
+  - **Superadmin**: "👥 Usuarios" (página de gestión de usuarios), "📁 Proyectos" (gestión de proyectos), "🌀 Simulador" (simulación de flujo).
+  - **Admin**: "📁 Proyectos", "🌀 Simulador".
+  - **Cliente**: "📂 Mis Planos" (solo visualización de proyectos asignados).
+- Además, se debe incluir siempre una opción "Cerrar sesión" que limpie `st.session_state` y vuelva a la pantalla de login.
+- Las opciones deben ser botones o enlaces que cambien el contenido principal (por ejemplo, usando `st.navigation` o cambiando una variable de sesión que indique la página actual, y mostrando el contenido condicionalmente con `if`). Se recomienda usar `st.page` o mantener el sistema de páginas separadas (simulador.py, etc.) y usar `st.switch_page` para navegar.
+
+### 4. Selector de tema (dark/light mode)
+- Agregar en el sidebar (siempre visible después del login) un toggle (por ejemplo, `st.toggle` o `st.selectbox`) con opciones "🌙 Oscuro" y "☀️ Claro".
+- Al cambiar el tema, se debe modificar la configuración global de Streamlit. Esto se puede lograr inyectando CSS personalizado a través de `st.markdown` con etiquetas `<style>`. Por ejemplo, para tema oscuro, cambiar el color de fondo y texto de los contenedores principales.
+- La preferencia de tema debe persistir en `st.session_state` para que al recargar la página se mantenga.
+- Asegurar que el tema sea consistente en todas las páginas (simulador, gestión, etc.).
+
+### 5. Integración con las páginas existentes
+- Actualmente, el proyecto tiene una estructura de páginas en la carpeta `pages/` (simulador.py, gestion_usuarios.py, proyectos.py, mis_planos.py). Cada una de estas páginas asume que el usuario está autenticado y tiene permisos adecuados.
+- Se debe modificar `app.py` para que actúe como controlador principal:
+  - Si no hay sesión activa, mostrar login.
+  - Si hay sesión activa, mostrar el sidebar y, dependiendo de la opción seleccionada, cargar la página correspondiente (por ejemplo, con `exec(open(f"pages/{pagina}.py").read())` o mejor, usando `st.switch_page` si se configuran como páginas de Streamlit).
+- En cada página, se debe verificar al inicio que el usuario tenga el rol adecuado (por ejemplo, si un cliente intenta acceder a la URL de simulación, redirigir a "Mis Planos").
+
+### 6. Mantenimiento de funcionalidades existentes
+- No se debe alterar la lógica de simulación, dibujo, obstáculos, exportación, etc. Solo se modifica la navegación y la apariencia.
+- Conservar el sistema de autenticación actual (bcrypt, SQLite). Las credenciales por defecto (admin/admin) deben seguir funcionando.
+
+### 7. Ejemplo de implementación para el sidebar dinámico
+```python
+# En app.py, después de verificar autenticación
+if "authenticated" not in st.session_state:
+    st.session_state["authenticated"] = False
+
+if not st.session_state["authenticated"]:
+    # Mostrar formulario de login
+    # ...
+else:
+    with st.sidebar:
+        st.title(f"Bienvenido, {st.session_state['username']}")
+        rol = st.session_state["role"]
+        
+        # Selector de tema
+        tema = st.selectbox("Tema", ["Claro", "Oscuro"], key="tema_selector")
+        if tema == "Oscuro":
+            st.markdown("""
+            <style>
+            .stApp {
+                background-color: #1e1e1e;
+                color: white;
+            }
+            </style>
+            """, unsafe_allow_html=True)
+        else:
+            st.markdown("""
+            <style>
+            .stApp {
+                background-color: white;
+                color: black;
+            }
+            </style>
+            """, unsafe_allow_html=True)
+        
+        # Opciones según rol
+        if rol == "superadmin":
+            opciones = ["Usuarios", "Proyectos", "Simulador"]
+        elif rol == "admin":
+            opciones = ["Proyectos", "Simulador"]
+        else:  # cliente
+            opciones = ["Mis Planos"]
+        
+        seleccion = st.radio("Navegación", opciones, key="nav")
+        
+        if st.button("Cerrar sesión"):
+            for key in ["authenticated", "role", "username"]:
+                if key in st.session_state:
+                    del st.session_state[key]
+            st.rerun()
+    
+    # Mostrar contenido según selección
+    if seleccion == "Usuarios":
+        # Podría ser st.switch_page("pages/gestion_usuarios.py")
+        exec(open("pages/gestion_usuarios.py").read())
+    elif seleccion == "Proyectos":
+        exec(open("pages/proyectos.py").read())
+    elif seleccion == "Simulador":
+        exec(open("pages/simulador.py").read())
+    elif seleccion == "Mis Planos":
+        exec(open("pages/mis_planos.py").read())
+Nota: El uso de exec no es recomendado; es mejor configurar las páginas como páginas de Streamlit y usar st.switch_page. Si el proyecto ya está configurado con múltiples páginas (cada archivo en pages/ es una página), entonces en app.py no se necesita exec, simplemente después del login se redirige a la página correspondiente con st.switch_page("pages/simulador.py") y se deja que Streamlit maneje la navegación. Pero para que el sidebar sea persistente, todas las páginas deberían incluir el mismo sidebar, lo cual es complicado. Por eso, la solución con exec o con un único app.py que importa condicionalmente es más sencilla.
+
+Se puede optar por mantener un único archivo principal app.py que contenga toda la lógica de navegación, y las funcionalidades de las páginas se importan como funciones (por ejemplo, mostrar_simulador(), mostrar_usuarios(), etc.) definidas en módulos separados. Esto facilita compartir el sidebar y el estado.
+
+Por favor, elige el enfoque que consideres más limpio y mantenible, pero asegura que el resultado final cumpla con los requisitos.
+
+8. Pruebas
+Verificar que al iniciar sin sesión, solo se ve el login.
+
+Al ingresar con superadmin, aparecen las 3 opciones.
+
+Con admin, solo Proyectos y Simulador.
+
+Con cliente, solo Mis Planos.
+
+Al cambiar el tema, la interfaz cambia de color.
+
+Al cerrar sesión, vuelve al login.
+
+Implementa estos cambios con cuidado y añade comentarios explicativos. La aplicación debe seguir funcionando en Replit sin errores.
+
+text
+
+Con este prompt, Replit podrá ajustar la aplicación para que el menú lateral sea contextual y se añada el selector de tema. Es importante que el desarrollador (o la IA) entienda la estructura actual y adapte la solución sin romper nada.
