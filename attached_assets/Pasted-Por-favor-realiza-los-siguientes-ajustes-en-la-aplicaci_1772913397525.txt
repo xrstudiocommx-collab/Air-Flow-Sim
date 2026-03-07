@@ -1,0 +1,48 @@
+Por favor, realiza los siguientes ajustes en la aplicación para garantizar que los obstáculos (polígonos) se dibujen correctamente y afecten el flujo de aire según las proporciones definidas. Mantén toda la funcionalidad existente (autenticación, roles, canvas, mapa de calor, exportación, etc.).
+
+## 1. Cierre de polígonos con doble clic
+- Actualmente, cuando se dibuja un polígono (obstáculo) en el canvas, debe permitirse finalizar la figura dando doble clic (comportamiento estándar en herramientas de dibujo).
+- Verifica que el `drawing_mode` del canvas esté configurado como `"polygon"` y que el parámetro `stroke_width` sea adecuado.
+- Asegura que al finalizar el polígono (con doble clic), sus vértices se guarden correctamente en `st.session_state["canvas_data"]` para que persistan.
+- Si el canvas actualmente usa otro modo (ej. `"freedraw"`), cámbialo a `"polygon"` cuando se seleccione la herramienta "Obstáculo".
+
+## 2. Asignación de tamaño y factor de transmisión a cada obstáculo
+- Después de dibujar un polígono, el usuario debe poder seleccionar su tamaño en el sidebar (Ch, M, G, XL) mediante un selectbox o botones de radio.
+- Almacena ese tamaño junto con el objeto en `st.session_state["obstacles"]` (o en la estructura de datos que uses). Cada obstáculo debe guardar:
+  - Tipo: "polygon"
+  - Vértices (lista de coordenadas)
+  - Tamaño: "Ch", "M", "G", "XL"
+  - Factor de transmisión correspondiente:
+    - Ch: 0.8 (permite 80% del flujo)
+    - M: 0.5 (permite 50%)
+    - G: 0.2 (permite 20%)
+    - XL: 0.0 (bloqueo total)
+- Si ya existe un selector de tamaño, verifica que el factor se guarde correctamente y se use en la simulación.
+
+## 3. Cálculo de colisiones (línea de vista) con factores de transmisión
+- En el algoritmo de simulación (archivo `simulation.py` o similar), cuando la opción "Línea de vista" está activada, se debe calcular el impacto de los obstáculos en la intensidad del flujo.
+- Para cada punto de la grilla y para cada ventilador, se debe determinar si la línea recta desde el centro del ventilador hasta el punto intersecta algún obstáculo.
+- Si hay intersección con un obstáculo, la intensidad de ese ventilador en ese punto se multiplica por el **factor de transmisión más restrictivo** (el menor) entre todos los obstáculos intersectados. Si hay múltiples obstáculos, se aplica el mínimo factor.
+- Si el punto está **dentro** de un obstáculo (por ejemplo, si el punto cae dentro del polígono), se debe aplicar el factor de transmisión de ese obstáculo directamente (incluso sin considerar línea de vista). Esto es especialmente importante para bloqueos totales (XL).
+- Optimiza este cálculo usando rasterización:
+  - Crea una máscara (array 2D) del mismo tamaño que la grilla de simulación, donde cada celda contenga el factor de transmisión mínimo de todos los obstáculos que la cubren.
+  - Para los puntos dentro de un obstáculo, se usa ese factor directamente.
+  - Para la línea de vista, puedes usar un algoritmo de Bresenham para recorrer la línea y ver si cruza celdas con factor < 1. Si cruza, se multiplica por el factor de la celda (el mínimo encontrado). Esto es más eficiente que la intersección geométrica para cada punto.
+
+## 4. Verificación de la lógica de bloqueo
+- Prueba los siguientes escenarios para confirmar que funciona:
+  - Un ventilador y un obstáculo XL entre él y un punto: la intensidad en ese punto debe ser 0.
+  - Un obstáculo Ch: la intensidad debe reducirse al 80% (multiplicar por 0.8).
+  - Varios obstáculos en serie: se debe aplicar el factor más bajo (el que más bloquea).
+  - Un punto dentro de un obstáculo XL: intensidad 0, sin importar la línea de vista.
+- Asegura que la opción "Línea de vista" (checkbox) active/desactive este cálculo. Cuando está desactivada, los obstáculos no afectan el flujo (solo se considera la distancia).
+
+## 5. Mantenimiento del resto de funcionalidades
+- No modifiques el sistema de autenticación, roles, gestión de proyectos, asignación a clientes, exportación de imágenes/CSV, ni la estructura general de la aplicación.
+- Conserva el colormap invertido (azul = alta intensidad, rojo = baja) ya ajustado previamente.
+
+## 6. Notas adicionales
+- Si el canvas no soporta el cierre con doble clic de forma nativa, verifica la documentación de `streamlit-drawable-canvas`. En versiones recientes, el modo `"polygon"` finaliza con doble clic. Si no funciona, podrías implementar un botón "Finalizar polígono" como alternativa.
+- Para el cálculo de intersección línea-polígono, puedes usar `shapely` si no es muy lento, pero la rasterización es más rápida para grillas grandes.
+
+Por favor, implementa estos cambios con cuidado y verifica que la aplicación siga funcionando sin errores en Replit. Agrega comentarios en el código para explicar la lógica de obstáculos y el cálculo de factores de transmisión.

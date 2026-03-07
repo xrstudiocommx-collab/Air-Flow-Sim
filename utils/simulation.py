@@ -111,12 +111,15 @@ def _apply_los(fan_x, fan_y, intensity, sim_h, sim_w, obstacles, obstacle_mask_f
             att = compute_visibility_with_transmission(
                 fan_x, fan_y, sim_h, sim_w, transmission_mask, num_samples=num_samples
             )
+            inside_obs = transmission_mask < 1.0
+            att[inside_obs] = np.minimum(att[inside_obs], transmission_mask[inside_obs])
             intensity *= att
         else:
             vis = compute_visibility(fan_x, fan_y, sim_h, sim_w, obstacle_mask_full, num_samples=num_samples)
             intensity *= vis
-    else:
-        intensity *= obstacle_mask_full
+    elif transmission_mask is not None:
+        inside_obs = transmission_mask < 1.0
+        intensity[inside_obs] *= transmission_mask[inside_obs]
     return intensity
 
 
@@ -146,12 +149,10 @@ def run_simulation(fans_circulares, fans_ovales, obstacles, img_width, img_heigh
         scaled_obs = {"points": pts, "transmission": obs["transmission"], "size": obs["size"]}
         scaled_obstacles.append(scaled_obs)
 
-    obstacle_mask_full = np.ones((sim_h, sim_w), dtype=np.uint8)
-    for obs in scaled_obstacles:
-        if obs["points"].shape[0] >= 3 and obs["transmission"] == 0:
-            cv2.fillPoly(obstacle_mask_full, [obs["points"]], 0)
-
     transmission_mask = build_transmission_mask(scaled_obstacles, sim_h, sim_w)
+
+    obstacle_mask_full = np.ones((sim_h, sim_w), dtype=np.uint8)
+    obstacle_mask_full[transmission_mask == 0] = 0
 
     for fan in fans_circulares:
         scaled_fan = {"x": fan["x"] * scale_x, "y": fan["y"] * scale_y, "r": fan["r"] * max(scale_x, scale_y)}
@@ -182,5 +183,7 @@ def run_simulation(fans_circulares, fans_ovales, obstacles, img_width, img_heigh
             progress_callback(fan_idx / max(total_fans, 1))
 
     total_intensity[obstacle_mask_full == 0] = 0
+    partial_obs = (transmission_mask > 0) & (transmission_mask < 1.0)
+    total_intensity[partial_obs] *= transmission_mask[partial_obs]
 
     return total_intensity, sim_w, sim_h
