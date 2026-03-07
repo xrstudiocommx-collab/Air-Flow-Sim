@@ -1,0 +1,127 @@
+Desarrolla una aplicación web completa con Streamlit y Python que permita simular la distribución de flujo de aire de ventiladores sobre planos arquitectónicos. La aplicación debe incluir un sistema de autenticación con tres roles (superadmin, admin, cliente) y las siguientes funcionalidades detalladas.
+
+## 1. AUTENTICACIÓN Y GESTIÓN DE USUARIOS
+- **Base de datos SQLite** (`users.db`) con las tablas:
+  - `users`: id, username, password_hash, role (superadmin, admin, cliente), created_at.
+  - `proyectos`: id, nombre, fecha, imagen_original, imagen_resultado, datos_csv, admin_id (FK a users), asignado_a (FK a users, puede ser NULL para clientes).
+- **Login**: Pantalla inicial con campos de usuario y contraseña. Usar `bcrypt` para hashear contraseñas.
+- **Sesión**: Mantener el usuario logueado mediante `st.session_state`.
+- **Roles**:
+  - **Superadmin**: Acceso total: gestión de usuarios (CRUD), proyectos, simulador.
+  - **Administrador** (ingeniero): Puede crear, editar y simular proyectos; asignar resultados a clientes.
+  - **Cliente**: Solo puede ver los proyectos que le han sido asignados (imagen con mapa de calor y datos exportados). No puede modificar ni simular.
+
+## 2. INTERFAZ SEGÚN EL ROL
+- Después del login, el sidebar muestra opciones dinámicas según el rol:
+  - **Superadmin**: "👥 Usuarios", "📁 Proyectos", "🌀 Simulador".
+  - **Administrador**: "📁 Proyectos", "🌀 Simulador".
+  - **Cliente**: "📂 Mis Planos".
+- Usar `st.navigation` o páginas separadas (recomiendo usar `st.Page` en versiones recientes de Streamlit, o crear un sistema de menú manual con botones).
+
+## 3. MÓDULO DE SIMULACIÓN (para admin y superadmin)
+### 3.1. Carga y preparación de la imagen
+- Subir imagen (PNG, JPG, JPEG). Si el ancho supera los 800px, redimensionar proporcionalmente (usar PIL).
+- Mostrar la imagen redimensionada en el canvas.
+
+### 3.2. Canvas interactivo con `streamlit-drawable-canvas`
+- Configurar el canvas con el tamaño de la imagen (o fijo 800x600 con scroll).
+- Herramientas de dibujo:
+  - **Círculo**: Representa ventilador de techo (flujo radial). Al dibujarlo, se guarda su centro y radio.
+  - **Óvalo**: Representa ventilador de pedestal modelo "AirFree" (flujo direccional). Se debe poder dibujar un óvalo (herramienta elipse) y se asume que la dirección del flujo es a lo largo del eje mayor (hacia adelante). Para simplificar, se puede usar la orientación del óvalo (ángulo) y luego en la simulación se considera una elipse con intensidad gaussiana.
+  - **Polígono**: Representa obstáculo. Al terminar de dibujar, se debe mostrar un selector de tamaño (Ch, M, G, XL) con los siguientes factores de transmisión (porcentaje de flujo que permite):
+    - Ch: 80% (bloquea 20%)
+    - M: 50% (bloquea 50%)
+    - G: 20% (bloquea 80%)
+    - XL: 0% (bloqueo total)
+- Cada objeto dibujado se almacena en `st.session_state` con su tipo, coordenadas, tamaño (si es obstáculo) y otros atributos. Se debe permitir seleccionar, mover y eliminar objetos (el canvas ya lo soporta si se usa el modo "transform").
+
+### 3.3. Parámetros de simulación (en el sidebar)
+- **Tasa de decaimiento** (slider float, 0.01 a 0.5, valor inicial 0.1).
+- **Multiplicador de intensidad** (slider float, 1 a 20, inicial 10).
+- **Resolución**: Selector con opciones "Baja", "Media", "Alta". Traducir a tamaños de grilla: Baja = 100x100, Media = 200x200, Alta = 400x400.
+- **Línea de vista**: Checkbox (activo por defecto). Si está activado, los obstáculos bloquean el flujo según su factor de transmisión. Si no, solo se considera la distancia.
+
+### 3.4. Algoritmo de simulación
+Al hacer clic en **"Generar Mapa de Calor"**:
+1. Crear una grilla de puntos de acuerdo a la resolución elegida (ancho x alto de la imagen).
+2. Para cada ventilador:
+   - Si es **círculo** (techo):
+     - Calcular distancia `d` desde el centro del ventilador a cada punto de la grilla.
+     - Intensidad base = `multiplicador * exp(-d * decay_rate)`.
+   - Si es **óvalo** (AirFree):
+     - Usar modelo elíptico: transformar coordenadas al sistema del óvalo (rotación). Calcular distancia normalizada en dirección del eje mayor y menor. Una posible fórmula: intensidad = multiplicador * exp( - ( (dx/a)^2 + (dy/b)^2 ) * decay_rate ), donde a es el semieje mayor (dirección del flujo) y b el menor. Ajustar para que la intensidad sea máxima en el centro y decaiga más rápido hacia los lados.
+3. Para cada punto, si **Línea de vista** está activada:
+   - Por cada obstáculo, verificar si la línea recta desde el centro del ventilador al punto intersecta el polígono del obstáculo. Usar ray casting o algoritmo de intersección (puede ser lento, optimizar con máscaras).
+   - Si intersecta, multiplicar la intensidad por el factor de transmisión de ese obstáculo. Si hay múltiples obstáculos, usar el factor más restrictivo (el menor). Si el factor es 0 (XL), la intensidad se anula.
+4. Combinar intensidades de todos los ventiladores por punto (suma). No es necesario normalizar, pero se puede escalar para visualización.
+5. Generar una imagen de mapa de calor con `matplotlib` usando un colormap invertido (azul para alta intensidad, rojo para baja). Ejemplo: usar `cmap='jet_r'` (jet reverse) o construir uno personalizado.
+6. Superponer el mapa de calor semitransparente sobre la imagen original.
+
+### 3.5. Exportación de resultados
+- Botón **"Descargar imagen"**: guardar la imagen combinada (plano + mapa) en PNG.
+- Botón **"Descargar CSV"**: exportar los datos de la grilla (coordenadas x, y, intensidad) como CSV.
+- Opcional: guardar el proyecto automáticamente en la base de datos (con nombre, fecha, referencias a los archivos) y permitir asignarlo a clientes.
+
+## 4. GESTIÓN DE PROYECTOS (admin y superadmin)
+- Lista de proyectos creados por el admin actual (o todos si es superadmin).
+- Cada proyecto muestra: nombre, fecha, imagen (miniatura), opciones de ver/editar, y un selector para asignar a un cliente (lista de usuarios con rol cliente).
+- Al hacer clic en un proyecto, se puede ver el resultado y descargar los archivos.
+
+## 5. PANEL DE CLIENTE
+- El cliente ve una cuadrícula con los proyectos que le han sido asignados.
+- Al seleccionar uno, ve la imagen con el mapa de calor y tiene botones para descargar la imagen y el CSV. No ve los parámetros de simulación ni puede modificarlos.
+
+## 6. GESTIÓN DE USUARIOS (solo superadmin)
+- Lista de usuarios con opciones de editar (cambiar rol, contraseña) y eliminar.
+- Formulario para crear nuevo usuario: username, password, rol (superadmin, admin, cliente).
+- Al crear un cliente, se le pueden asignar proyectos directamente (opcional).
+
+## 7. ESTRUCTURA DE ARCHIVOS Y ORGANIZACIÓN
+.
+├── app.py # Punto de entrada, lógica de login y navegación
+├── pages/
+│ ├── 01_Simulador.py # Página de simulación (admin/superadmin)
+│ ├── 02_Gestion_Usuarios.py # Solo superadmin
+│ ├── 03_Proyectos.py # Admin y superadmin
+│ └── 04_Mis_Planos.py # Cliente
+├── utils/
+│ ├── auth.py # Funciones de autenticación (hash, verificar)
+│ ├── db.py # Conexión y consultas SQLite
+│ ├── simulation.py # Algoritmos de flujo y mapa de calor
+│ └── canvas_utils.py # Funciones para manejar objetos del canvas
+├── outputs/ # Carpeta para guardar imágenes y CSV generados
+├── .streamlit/
+│ └── config.toml # Configuración de tema (oscuro recomendado)
+└── requirements.txt
+
+text
+
+## 8. DEPENDENCIAS (requirements.txt)
+streamlit==1.28.0
+numpy==1.24.3
+opencv-python-headless==4.8.1.78
+Pillow==10.0.1
+matplotlib==3.7.2
+pandas==2.1.3
+streamlit-drawable-canvas==0.9.3
+bcrypt==4.0.1
+
+text
+
+## 9. SUGERENCIAS VISUALES Y DE EXPERIENCIA
+- Usar tema oscuro para reducir fatiga visual (configurar en `.streamlit/config.toml`).
+- El canvas debe tener un tamaño fijo (ej. 800x600) con la imagen escalada para que quepa. Si la imagen es más pequeña, centrarla.
+- Al seleccionar un objeto en el canvas, mostrar sus propiedades en el sidebar (por ejemplo, si es un obstáculo, mostrar el tamaño y permitir cambiarlo).
+- Para los óvalos, se puede pedir al usuario que dibuje un rectángulo (herramienta rect) y luego interpretarlo como elipse; la dirección se infiere del rectángulo (horizontal o vertical) y se puede añadir un slider de ángulo en el sidebar.
+- El cálculo de línea de vista puede ser costoso; optimizar usando máscaras de obstáculos rasterizadas (convertir polígonos a máscaras binarias en la resolución de la simulación).
+- Incluir barras de progreso para simulaciones largas.
+
+## 10. NOTAS ADICIONALES
+- Almacenar las imágenes generadas y los CSV en la carpeta `outputs/` con nombres únicos (timestamp).
+- En la tabla `proyectos`, guardar las rutas a estos archivos.
+- Implementar un logout que limpie la sesión.
+
+## 11. ENTREGA ESPERADA
+- Código funcional y bien comentado.
+- La aplicación debe ejecutarse sin errores en Replit con `streamlit run app.py`.
+- Incluir un archivo `README.md` con instrucciones de uso y credenciales por defecto (ej. superadmin: admin/admin, o crear uno al primer inicio).
