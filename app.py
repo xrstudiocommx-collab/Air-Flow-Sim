@@ -98,7 +98,7 @@ def main():
         use_los = st.checkbox("Bloqueo linea de vista (mas preciso, mas lento)", value=True)
 
         if st.button("Limpiar Todo"):
-            st.session_state["canvas_key"] = np.random.randint(0, 1000000)
+            st.session_state["canvas_key"] = f"canvas_{np.random.randint(0, 1000000)}"
             st.rerun()
 
     if uploaded_file:
@@ -119,7 +119,7 @@ def main():
             width=w,
             height=h,
             drawing_mode=drawing_mode,
-            key=st.session_state.get("canvas_key", "canvas"),
+            key=str(st.session_state.get("canvas_key", "canvas")),
             display_toolbar=True,
         )
 
