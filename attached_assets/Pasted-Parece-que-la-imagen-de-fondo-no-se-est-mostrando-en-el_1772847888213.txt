@@ -1,0 +1,61 @@
+Parece que la imagen de fondo no se está mostrando en el canvas interactivo, solo aparece al generar el mapa de calor. Esto es porque el componente streamlit-drawable-canvas necesita que le pases explícitamente la imagen como fondo mediante el parámetro background_image. En tu código actual, probablemente la imagen solo se está usando en la simulación, pero no en el canvas.
+
+¿Qué revisar y cómo corregirlo?
+1. Pasa la imagen al canvas después de cargarla
+En la página de simulación, después de que el usuario sube la imagen, debes asignarla al parámetro background_image del canvas. Ejemplo:
+
+python
+if uploaded_file:
+    image = Image.open(uploaded_file)
+    # Redimensionar si es necesario
+    # ...
+    st.session_state["background_image"] = image  # Guardar en sesión
+
+# En el canvas:
+canvas_result = st_canvas(
+    fill_color="rgba(255, 165, 0, 0.3)",
+    stroke_width=3,
+    stroke_color="#000000",
+    background_color="#ffffff",
+    background_image=st.session_state.get("background_image"),  # ¡Aquí!
+    update_streamlit=True,
+    height=600,
+    width=800,
+    drawing_mode="freedraw",
+    key="canvas",
+)
+2. Ajusta el tamaño del canvas al de la imagen
+Si la imagen redimensionada tiene un tamaño diferente a 800x600, el canvas no la mostrará completa o se verá distorsionada. Puedes usar el tamaño de la imagen para definir el alto y ancho del canvas:
+
+python
+if image:
+    width, height = image.size
+    # Limitar a un máximo (ej. 800px de ancho) manteniendo proporción
+    if width > 800:
+        ratio = 800 / width
+        new_width = 800
+        new_height = int(height * ratio)
+        image = image.resize((new_width, new_height))
+        st.session_state["background_image"] = image
+    # Usar new_width y new_height en el canvas
+3. Forzar actualización del canvas
+A veces Streamlit no redibuja el canvas cuando cambia la imagen. Puedes forzarlo cambiando la key dinámicamente, por ejemplo usando un contador o el timestamp:
+
+python
+if "canvas_key" not in st.session_state:
+    st.session_state.canvas_key = 0
+
+# Cuando se carga nueva imagen:
+st.session_state.canvas_key += 1
+
+canvas_result = st_canvas(..., key=f"canvas_{st.session_state.canvas_key}")
+4. Verifica que la imagen esté en formato PIL y no sea un archivo
+El parámetro background_image espera un objeto PIL.Image o un array numpy. Si usas Image.open(), ya está bien.
+
+5. Revisa el orden de importaciones y versiones
+Asegúrate de tener la última versión de streamlit-drawable-canvas (0.9.3) y que no haya conflictos.
+
+Resumen de lo que debes pedir a Replit:
+"Revisa que en la página de simulación, después de cargar la imagen, se esté asignando correctamente al parámetro background_image del canvas. Además, ajusta el tamaño del canvas al de la imagen redimensionada y usa una clave dinámica para forzar la actualización. También verifica que la imagen no se esté mostrando solo al generar el mapa porque en ese momento se crea una nueva figura de matplotlib que sí la incluye."
+
+Con estos cambios, la imagen debería verse de fondo en el canvas desde el momento de la carga.

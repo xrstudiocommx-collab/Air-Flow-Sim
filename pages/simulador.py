@@ -52,26 +52,38 @@ def render():
         st.divider()
         if st.button("Limpiar Canvas"):
             st.session_state["sim_canvas_key"] = f"canvas_{np.random.randint(0, 1000000)}"
-            if "obstacle_sizes" in st.session_state:
-                del st.session_state["obstacle_sizes"]
+            for k in list(st.session_state.keys()):
+                if k.startswith("obstacle_sizes"):
+                    del st.session_state[k]
+            if "sim_bg_image" in st.session_state:
+                del st.session_state["sim_bg_image"]
+            if "sim_img_w" in st.session_state:
+                del st.session_state["sim_img_w"]
+            if "sim_img_h" in st.session_state:
+                del st.session_state["sim_img_h"]
             st.rerun()
 
     uploaded_file = st.file_uploader("Sube un plano arquitectonico", type=["png", "jpg", "jpeg"])
 
-    if not uploaded_file:
+    if uploaded_file:
+        bg_image = Image.open(uploaded_file).copy()
+        orig_w, orig_h = bg_image.size
+        max_w = 800
+        if orig_w > max_w:
+            ratio = max_w / orig_w
+            bg_image = bg_image.resize((int(orig_w * ratio), int(orig_h * ratio)))
+        bg_image = bg_image.convert("RGBA")
+        st.session_state["sim_bg_image"] = bg_image
+        st.session_state["sim_img_w"] = bg_image.size[0]
+        st.session_state["sim_img_h"] = bg_image.size[1]
+
+    if "sim_bg_image" not in st.session_state:
         st.info("Sube una imagen de plano para comenzar la simulacion.")
         return
 
-    bg_image = Image.open(uploaded_file)
-    orig_w, orig_h = bg_image.size
-    max_w = 800
-    if orig_w > max_w:
-        ratio = max_w / orig_w
-        bg_image = bg_image.resize((int(orig_w * ratio), int(orig_h * ratio)))
-    w, h = bg_image.size
-
-    if bg_image.mode not in ("RGB", "RGBA"):
-        bg_image = bg_image.convert("RGBA")
+    bg_image = st.session_state["sim_bg_image"]
+    w = st.session_state["sim_img_w"]
+    h = st.session_state["sim_img_h"]
 
     st.subheader("Dibuja ventiladores y obstaculos")
     st.caption("Circulo = abanico techo | Rectangulo = abanico pedestal (AirFree) | Poligono = obstaculo")
@@ -80,6 +92,7 @@ def render():
         fill_color="rgba(255, 165, 0, 0.2)",
         stroke_width=2,
         stroke_color=stroke_color,
+        background_color="#ffffff",
         background_image=bg_image,
         width=w,
         height=h,
