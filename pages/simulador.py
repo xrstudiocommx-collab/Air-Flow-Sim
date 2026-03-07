@@ -13,7 +13,7 @@ from streamlit_drawable_canvas import st_canvas
 
 CMAP_COLD_AIR = LinearSegmentedColormap.from_list(
     "cold_air",
-    ["#080A2E", "#0D47A1", "#1E88E5", "#4FC3F7", "#80DEEA", "#E0F7FA", "#FFF9C4", "#FFD54F", "#FF8A65", "#D32F2F"],
+    ["#D32F2F", "#FF8A65", "#FFD54F", "#FFF9C4", "#E0F7FA", "#80DEEA", "#4FC3F7", "#1E88E5", "#0D47A1", "#080A2E"],
     N=256,
 )
 
