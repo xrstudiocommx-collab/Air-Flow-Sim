@@ -75,6 +75,14 @@ DARK_THEME_CSS = """
 </style>
 """
 
+HIDE_SIDEBAR_CSS = """
+<style>
+    [data-testid="stSidebar"] { display: none !important; }
+    [data-testid="stSidebarCollapsedControl"] { display: none !important; }
+    button[kind="headerNoPadding"] { display: none !important; }
+</style>
+"""
+
 
 def apply_theme():
     theme = st.session_state.get("app_theme", "Oscuro")
@@ -85,7 +93,26 @@ def apply_theme():
 
 
 def show_login():
+    st.markdown(HIDE_SIDEBAR_CSS, unsafe_allow_html=True)
     apply_theme()
+
+    current_theme = st.session_state.get("app_theme", "Oscuro")
+
+    cols_top = st.columns([6, 1])
+    with cols_top[1]:
+        theme_options = ["Oscuro", "Claro"]
+        theme_idx = theme_options.index(current_theme) if current_theme in theme_options else 0
+        new_theme = st.selectbox(
+            "Tema",
+            theme_options,
+            index=theme_idx,
+            format_func=lambda x: f"🌙 Dark" if x == "Oscuro" else f"☀️ Light",
+            key="login_theme_select",
+            label_visibility="collapsed",
+        )
+        if new_theme != current_theme:
+            st.session_state["app_theme"] = new_theme
+            st.rerun()
 
     st.markdown(
         """
@@ -137,20 +164,17 @@ def show_app():
         if role == "superadmin":
             menu_options = ["Simulador", "Proyectos", "Usuarios"]
             menu_icons = ["🌀", "📁", "👥"]
-            default_idx = 0
         elif role == "admin":
             menu_options = ["Simulador", "Proyectos"]
             menu_icons = ["🌀", "📁"]
-            default_idx = 0
         else:
             menu_options = ["Mis Planos"]
             menu_icons = ["📂"]
-            default_idx = 0
 
         selection = st.radio(
             "Navegacion",
             menu_options,
-            index=default_idx,
+            index=0,
             format_func=lambda x: f"{menu_icons[menu_options.index(x)]} {x}",
             label_visibility="collapsed",
         )
@@ -164,7 +188,7 @@ def show_app():
             "Tema",
             theme_options,
             index=theme_idx,
-            format_func=lambda x: f"🌙 {x}" if x == "Oscuro" else f"☀️ {x}",
+            format_func=lambda x: f"🌙 Dark" if x == "Oscuro" else f"☀️ Light",
             key="theme_select",
         )
         if new_theme != st.session_state.get("app_theme", "Oscuro"):
@@ -177,16 +201,16 @@ def show_app():
             st.rerun()
 
     if selection == "Simulador":
-        from pages.simulador import render
+        from views.simulador import render
         render()
     elif selection == "Proyectos":
-        from pages.proyectos import render
+        from views.proyectos import render
         render()
     elif selection == "Usuarios":
-        from pages.usuarios import render
+        from views.usuarios import render
         render()
     elif selection == "Mis Planos":
-        from pages.mis_planos import render
+        from views.mis_planos import render
         render()
 
 
