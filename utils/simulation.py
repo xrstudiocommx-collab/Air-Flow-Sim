@@ -41,8 +41,10 @@ def compute_oval_fan_intensity(fan, grid_x, grid_y, decay_rate, multiplier):
     exterior = norm_dist > 1.0
     intensity[exterior] = multiplier * np.exp(-(norm_dist[exterior] - 1.0) * decay_rate * max(a, b))
 
-    forward = dx_rot > 0
-    directional = np.where(forward, 1.0, 0.3)
+    angle = np.arctan2(dy_rot, dx_rot)
+    cos_angle = np.cos(angle)
+    smoothing = 4.0
+    directional = 0.3 + 0.7 / (1.0 + np.exp(-smoothing * cos_angle))
     intensity *= directional
 
     return intensity
