@@ -73,41 +73,43 @@ def compute_visibility(fan_x, fan_y, height, width, obstacle_mask, num_samples=6
     return visibility
 
 
-def compute_visibility_with_transmission(fan_x, fan_y, height, width, obstacles, num_samples=64):
+def build_transmission_mask(obstacles, height, width):
+    mask = np.ones((height, width), dtype=np.float32)
+    for obs in obstacles:
+        transmission = obs["transmission"]
+        pts = obs["points"]
+        if pts.shape[0] >= 3:
+            obs_region = np.zeros((height, width), dtype=np.uint8)
+            cv2.fillPoly(obs_region, [pts], 1)
+            affected = obs_region == 1
+            mask[affected] = np.minimum(mask[affected], transmission)
+    return mask
+
+
+def compute_visibility_with_transmission(fan_x, fan_y, height, width, transmission_mask, num_samples=64):
     attenuation = np.ones((height, width), dtype=np.float32)
     yy, xx = np.mgrid[0:height, 0:width]
     dx = xx.astype(np.float32) - fan_x
     dy = yy.astype(np.float32) - fan_y
 
-    for obs in obstacles:
-        transmission = obs["transmission"]
-        pts = obs["points"]
-        obs_mask = np.zeros((height, width), dtype=np.uint8)
-        if pts.shape[0] >= 3:
-            cv2.fillPoly(obs_mask, [pts], 1)
+    for i in range(1, num_samples + 1):
+        t = i / num_samples
+        sx = np.clip((fan_x + t * dx).astype(np.int32), 0, width - 1)
+        sy = np.clip((fan_y + t * dy).astype(np.int32), 0, height - 1)
 
-        ray_hits = np.zeros((height, width), dtype=bool)
-        for i in range(1, num_samples + 1):
-            t = i / num_samples
-            sx = np.clip((fan_x + t * dx).astype(np.int32), 0, width - 1)
-            sy = np.clip((fan_y + t * dy).astype(np.int32), 0, height - 1)
-            ray_hits |= (obs_mask[sy, sx] == 1)
-
-        if transmission == 0:
-            attenuation[ray_hits] = 0
-        else:
-            attenuation[ray_hits] = np.minimum(attenuation[ray_hits], transmission)
+        sample_trans = transmission_mask[sy, sx]
+        blocked = sample_trans < 1.0
+        attenuation[blocked] = np.minimum(attenuation[blocked], sample_trans[blocked])
 
     return attenuation
 
 
 def _apply_los(fan_x, fan_y, intensity, sim_h, sim_w, obstacles, obstacle_mask_full,
-               scaled_obstacles, use_los, num_samples=48):
+               scaled_obstacles, use_los, transmission_mask=None, num_samples=48):
     if use_los and len(obstacles) > 0:
-        has_partial = any(o["transmission"] > 0 for o in scaled_obstacles)
-        if has_partial:
+        if transmission_mask is not None:
             att = compute_visibility_with_transmission(
-                fan_x, fan_y, sim_h, sim_w, scaled_obstacles, num_samples=num_samples
+                fan_x, fan_y, sim_h, sim_w, transmission_mask, num_samples=num_samples
             )
             intensity *= att
         else:
@@ -138,20 +140,25 @@ def run_simulation(fans_circulares, fans_ovales, obstacles, img_width, img_heigh
     total_fans = len(fans_circulares) + len(fans_ovales)
     fan_idx = 0
 
-    obstacle_mask_full = np.ones((sim_h, sim_w), dtype=np.uint8)
     scaled_obstacles = []
     for obs in obstacles:
         pts = (obs["points"] * np.array([scale_x, scale_y])).astype(np.int32)
-        if pts.shape[0] >= 3:
-            cv2.fillPoly(obstacle_mask_full, [pts], 0)
         scaled_obs = {"points": pts, "transmission": obs["transmission"], "size": obs["size"]}
         scaled_obstacles.append(scaled_obs)
+
+    obstacle_mask_full = np.ones((sim_h, sim_w), dtype=np.uint8)
+    for obs in scaled_obstacles:
+        if obs["points"].shape[0] >= 3 and obs["transmission"] == 0:
+            cv2.fillPoly(obstacle_mask_full, [obs["points"]], 0)
+
+    transmission_mask = build_transmission_mask(scaled_obstacles, sim_h, sim_w)
 
     for fan in fans_circulares:
         scaled_fan = {"x": fan["x"] * scale_x, "y": fan["y"] * scale_y, "r": fan["r"] * max(scale_x, scale_y)}
         intensity = compute_circular_fan_intensity(scaled_fan, grid_x, grid_y, decay_rate, multiplier)
         intensity = _apply_los(scaled_fan["x"], scaled_fan["y"], intensity, sim_h, sim_w,
-                               obstacles, obstacle_mask_full, scaled_obstacles, use_los)
+                               obstacles, obstacle_mask_full, scaled_obstacles, use_los,
+                               transmission_mask=transmission_mask)
         total_intensity += intensity
         fan_idx += 1
         if progress_callback:
@@ -167,7 +174,8 @@ def run_simulation(fans_circulares, fans_ovales, obstacles, img_width, img_heigh
         }
         intensity = compute_oval_fan_intensity(scaled_fan, grid_x, grid_y, decay_rate, multiplier)
         intensity = _apply_los(scaled_fan["x"], scaled_fan["y"], intensity, sim_h, sim_w,
-                               obstacles, obstacle_mask_full, scaled_obstacles, use_los)
+                               obstacles, obstacle_mask_full, scaled_obstacles, use_los,
+                               transmission_mask=transmission_mask)
         total_intensity += intensity
         fan_idx += 1
         if progress_callback:

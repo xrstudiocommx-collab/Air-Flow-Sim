@@ -4,11 +4,18 @@ from PIL import Image
 import matplotlib.pyplot as plt
 import matplotlib
 matplotlib.use("Agg")
+from matplotlib.colors import LinearSegmentedColormap
 import io
 import os
 import pandas as pd
 from datetime import datetime
 from streamlit_drawable_canvas import st_canvas
+
+CMAP_COLD_AIR = LinearSegmentedColormap.from_list(
+    "cold_air",
+    ["#080A2E", "#0D47A1", "#1E88E5", "#4FC3F7", "#80DEEA", "#E0F7FA", "#FFF9C4", "#FFD54F", "#FF8A65", "#D32F2F"],
+    N=256,
+)
 
 from utils.canvas_utils import parse_canvas_objects, SIZE_TRANSMISSION
 from utils.simulation import run_simulation
@@ -159,14 +166,19 @@ def render():
         fig, ax = plt.subplots(figsize=(10, h / w * 10))
         ax.imshow(bg_image)
 
-        masked = np.ma.masked_invalid(total_intensity)
-        vmax = max(np.nanmax(total_intensity) if np.any(~np.isnan(total_intensity)) else 1, 0.01)
+        display_intensity = total_intensity.copy()
+        display_intensity[display_intensity == 0] = np.nan
+        masked = np.ma.masked_invalid(display_intensity)
+        valid_vals = total_intensity[total_intensity > 0]
+        vmax = float(np.max(valid_vals)) if len(valid_vals) > 0 else 1.0
+        vmax = max(vmax, 0.01)
         im = ax.imshow(
-            masked, cmap="jet_r", alpha=0.6,
+            masked, cmap=CMAP_COLD_AIR, alpha=0.55,
             extent=[0, w, h, 0], vmin=0, vmax=vmax,
         )
         ax.axis("off")
-        plt.colorbar(im, ax=ax, label="Intensidad de flujo", shrink=0.8)
+        cbar = plt.colorbar(im, ax=ax, shrink=0.8)
+        cbar.set_label("Intensidad de flujo (azul = mayor, rojo = menor)", fontsize=9)
         st.pyplot(fig)
 
         st.subheader("Exportar Resultados")

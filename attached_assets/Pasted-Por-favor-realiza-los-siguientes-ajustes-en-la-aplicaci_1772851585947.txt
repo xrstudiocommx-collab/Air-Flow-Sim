@@ -1,0 +1,55 @@
+Por favor, realiza los siguientes ajustes en la aplicación de simulación de flujo de aire, manteniendo toda la funcionalidad actual (autenticación, roles, canvas, exportación, etc.):
+
+## 1. Look and feel de "aire frío" en el mapa de calor
+- Actualmente el mapa de calor usa un degradado inverso (azul = alta intensidad, rojo = baja intensidad). Queremos reforzar esa sensación visual para que parezca "aire frío" emanando desde los ventiladores.
+- Cambia el colormap utilizado en `matplotlib` a uno que tenga tonos azules para la máxima intensidad y que transicione suavemente a rojo/anaranjado para la baja intensidad. Por ejemplo, usa `cmap='coolwarm_r'` (coolwarm invertido: azul para valores altos, rojo para bajos) o crea un colormap personalizado con azul oscuro -> azul claro -> amarillo -> rojo.
+- Ajusta la opacidad del mapa de calor (alpha) a un valor entre 0.5 y 0.7 para que se vea bien superpuesto al plano sin ocultarlo completamente.
+- Asegúrate de que la leyenda del mapa de calor muestre correctamente la relación: azul = alta intensidad (frío), rojo = baja intensidad (calor).
+
+## 2. Simulación con intensidad constante dentro del círculo
+- Como ya se implementó, la intensidad máxima (azul) debe cubrir todo el interior del círculo (ventilador de techo) y comenzar a decaer exponencialmente desde el borde.
+- Verifica que el cálculo del radio del círculo sea correcto. Si el objeto dibujado tiene `radius` en sus propiedades, úsalo; si no, usa `width/2` asumiendo que es un círculo.
+- En la función de intensidad, aplica:
+  - Dentro del círculo: `intensidad = multiplier` (constante).
+  - Fuera: `intensidad = multiplier * exp(-(distancia - radio) * decay)`.
+- Para los óvalos (AirFree), mantén el modelo elíptico actual, pero si deseas que también tengan intensidad constante dentro de la elipse, adapta la fórmula usando distancia normalizada (por ejemplo, si la distancia elíptica normalizada <= 1, intensidad constante; si no, decaimiento exponencial desde el borde).
+
+## 3. Revisión y mejora del sistema de obstáculos
+- Verifica que los obstáculos dibujados como polígonos se estén procesando correctamente con sus factores de transmisión:
+  - Chico (Ch): 80% del flujo (bloquea 20%)
+  - Mediano (M): 50% del flujo (bloquea 50%)
+  - Grande (G): 20% del flujo (bloquea 80%)
+  - Extra Grande (XL): 0% del flujo (bloqueo total)
+- El cálculo de "línea de vista" debe verificar si la línea desde el centro del ventilador hasta cada punto de la grilla intersecta algún obstáculo. Si hay intersección, la intensidad se multiplica por el factor de transmisión del obstáculo más restrictivo (el menor factor). Si hay múltiples obstáculos en el camino, se debe aplicar el factor mínimo.
+- Optimiza este cálculo para que no sea demasiado lento. Una opción es rasterizar los obstáculos en una máscara de la misma resolución que la simulación, donde cada píxel tenga el factor de transmisión acumulado (mínimo de los obstáculos que lo cubren). Luego, para cada punto, se puede consultar esa máscara directamente. Esto evita hacer intersecciones geométricas punto por punto.
+- Asegúrate de que la casilla "Línea de vista" active/desactive este bloqueo. Cuando está desactivada, los obstáculos no afectan el flujo.
+
+## 4. Pruebas de integración
+- Después de implementar los cambios, prueba la aplicación con un caso simple:
+  - Sube un plano.
+  - Dibuja un círculo grande y genera el mapa de calor. Verifica que todo el interior sea azul y el degradado comience en el borde.
+  - Dibuja un obstáculo de tipo XL en medio y verifica que detrás de él la intensidad sea cero (si la línea de vista está activada).
+  - Prueba diferentes combinaciones de obstáculos y ventiladores.
+  - Exporta una imagen y un CSV para confirmar que los datos corresponden con lo visualizado.
+
+## 5. Mantenimiento del resto de funcionalidades
+- No alteres nada del sistema de autenticación, roles (superadmin, admin, cliente), gestión de proyectos, asignación a clientes, ni la estructura de archivos.
+- Conserva la organización actual de páginas y utilidades.
+
+## 6. Notas adicionales
+- Si necesitas un colormap personalizado, puedes crearlo con `matplotlib.colors.LinearSegmentedColormap`. Por ejemplo:
+  ```python
+  from matplotlib.colors import LinearSegmentedColormap
+  colors = ["darkblue", "blue", "cyan", "yellow", "red"]
+  cmap_frio = LinearSegmentedColormap.from_list("frio", colors, N=256)
+Luego úsalo con cmap=cmap_frio y para invertir la relación usa cmap_frio_r si es necesario.
+
+Ajusta el contraste y brillo del mapa para que se vea nítido.
+
+Por favor, implementa estos cambios con cuidado y asegúrate de que la aplicación siga funcionando sin errores en Replit. Si es necesario, añade comentarios en el código para facilitar futuras modificaciones.
+
+text
+
+---
+
+Este prompt cubre exactamente lo que necesitas: mejorar el look and feel visual (aire frío), asegurar la simulación con intensidad constante dentro del círculo, revisar el sistema de obstáculos con sus factores de transmisión, y mantener todo lo demás intacto. Copia y pega esto en Replit (en el chat o como instrucción al asistente) y debería generar los cambios adecuados.

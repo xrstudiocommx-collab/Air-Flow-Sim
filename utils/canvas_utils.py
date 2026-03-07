@@ -16,7 +16,9 @@ def parse_canvas_objects(objects):
         angle = obj.get("angle", 0)
 
         if obj_type == "circle":
-            radius = obj.get("radius", 0)
+            radius = obj.get("radius", None)
+            if radius is None:
+                radius = obj.get("width", 0) / 2
             fans_circulares.append({
                 "type": "circular",
                 "x": left + radius * scale_x,
