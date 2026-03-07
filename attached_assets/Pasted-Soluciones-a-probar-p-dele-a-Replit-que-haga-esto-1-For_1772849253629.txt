@@ -1,0 +1,112 @@
+Soluciones a probar (pídele a Replit que haga esto):
+1. Forzar la actualización del canvas con una clave dinámica
+A veces Streamlit no redibuja el componente aunque los datos cambien. Usa un contador en la clave:
+
+python
+# En pages/simulador.py, antes del canvas
+if "canvas_key" not in st.session_state:
+    st.session_state.canvas_key = 0
+
+# Cuando se carga nueva imagen (después de uploaded_file)
+if uploaded_file and st.session_state.get("last_uploaded") != uploaded_file.name:
+    st.session_state.canvas_key += 1
+    st.session_state.last_uploaded = uploaded_file.name
+
+# En el canvas
+canvas_result = st_canvas(
+    ...,
+    key=f"canvas_{st.session_state.canvas_key}",  # Clave dinámica
+    background_image=bg_image
+)
+2. Convertir la imagen a base64 manualmente y pasarla como string
+El componente espera un data URL. A veces pasando el objeto PIL no funciona bien. Conviértela explícitamente:
+
+python
+import base64
+from io import BytesIO
+
+def pil_to_data_url(image):
+    buffered = BytesIO()
+    image.save(buffered, format="PNG")
+    img_str = base64.b64encode(buffered.getvalue()).decode()
+    return f"data:image/png;base64,{img_str}"
+
+# Después de cargar la imagen
+if uploaded_file:
+    image = Image.open(uploaded_file)
+    # redimensionar...
+    st.session_state["bg_data_url"] = pil_to_data_url(image)
+
+# En el canvas
+canvas_result = st_canvas(
+    ...,
+    background_image=st.session_state.get("bg_data_url"),  # Pasar string
+    background_color="#ffffff"
+)
+3. Verificar que el canvas tenga tamaño suficiente
+Si la imagen es más grande que el canvas, fabric.js podría no mostrarla completa. Asegúrate de que el canvas tenga al menos el ancho de la imagen:
+
+python
+if image:
+    width, height = image.size
+    canvas_width = min(width, 800)  # Limitar pero no escalar el canvas
+    canvas_height = int(height * (canvas_width / width)) if width > 800 else height
+else:
+    canvas_width, canvas_height = 800, 600
+
+canvas_result = st_canvas(..., width=canvas_width, height=canvas_height)
+4. Probar con una imagen de prueba muy pequeña
+Para descartar problemas de tamaño, prueba con una imagen de 100x100 píxeles. Si esa se ve, el problema es el tamaño de la imagen original.
+
+5. Usar st.image aparte para verificar
+Agrega temporalmente st.image(bg_image) justo antes del canvas. Si se ve ahí, el problema es solo del canvas. Si no se ve ahí, la imagen no se está guardando en sesión.
+
+6. Revisar la consola del navegador
+Abre las herramientas de desarrollo (F12) y ve si hay errores de JavaScript relacionados con fabric.js o carga de imagen.
+
+Código completo para probar (pídele a Replit que lo implemente):
+python
+# En pages/simulador.py, reemplaza la sección del canvas con:
+
+import base64
+from io import BytesIO
+
+def image_to_base64(image):
+    buffered = BytesIO()
+    image.save(buffered, format="PNG")
+    return base64.b64encode(buffered.getvalue()).decode()
+
+# Cargar imagen
+if uploaded_file:
+    image = Image.open(uploaded_file)
+    # Redimensionar si es necesario
+    if image.width > 800:
+        ratio = 800 / image.width
+        new_size = (800, int(image.height * ratio))
+        image = image.resize(new_size)
+    st.session_state["bg_image"] = image.copy()
+    st.session_state["bg_base64"] = image_to_base64(image)
+    st.session_state["canvas_key"] = st.session_state.get("canvas_key", 0) + 1
+
+# Mostrar la imagen aparte para debug
+if "bg_image" in st.session_state:
+    st.image(st.session_state["bg_image"], caption="Vista previa", width=300)
+
+# Configurar canvas
+canvas_width = st.session_state["bg_image"].width if "bg_image" in st.session_state else 800
+canvas_height = st.session_state["bg_image"].height if "bg_image" in st.session_state else 600
+
+canvas_result = st_canvas(
+    fill_color="rgba(255, 165, 0, 0.1)",
+    stroke_width=3,
+    stroke_color="#000000",
+    background_color="#ffffff",
+    background_image=f"data:image/png;base64,{st.session_state.get('bg_base64', '')}",
+    update_streamlit=True,
+    height=canvas_height,
+    width=canvas_width,
+    drawing_mode=drawing_mode,
+    initial_drawing=st.session_state.get("canvas_data"),
+    key=f"canvas_{st.session_state.get('canvas_key', 0)}",
+)
+Si aún no funciona, el problema puede ser de la librería streamlit-drawable-canvas. Como alternativa rápida, podrías usar otro componente de dibujo como streamlit-image-coordinates o implementar un canvas personalizado con st.components.v1.html y fabric.js directamente.
