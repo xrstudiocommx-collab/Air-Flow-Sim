@@ -85,7 +85,10 @@ def render():
                 else:
                     ok, msg = create_user(new_user, new_pw, new_role)
                     if ok:
-                        st.success(msg)
+                        st.session_state["user_created_msg"] = f"Usuario '{new_user}' creado exitosamente con rol '{new_role}'."
                         st.rerun()
                     else:
                         st.error(msg)
+
+        if "user_created_msg" in st.session_state:
+            st.success(st.session_state.pop("user_created_msg"))
