@@ -106,6 +106,7 @@ def compute_visibility_with_transmission(fan_x, fan_y, height, width, transmissi
 
 def _apply_los(fan_x, fan_y, intensity, sim_h, sim_w, obstacles, obstacle_mask_full,
                scaled_obstacles, use_los, transmission_mask=None, num_samples=48):
+    xl_blocked = np.zeros((sim_h, sim_w), dtype=bool)
     if use_los and len(obstacles) > 0:
         if transmission_mask is not None:
             att = compute_visibility_with_transmission(
@@ -113,14 +114,17 @@ def _apply_los(fan_x, fan_y, intensity, sim_h, sim_w, obstacles, obstacle_mask_f
             )
             inside_obs = transmission_mask < 1.0
             att[inside_obs] = np.minimum(att[inside_obs], transmission_mask[inside_obs])
+            xl_blocked = att == 0
             intensity *= att
         else:
             vis = compute_visibility(fan_x, fan_y, sim_h, sim_w, obstacle_mask_full, num_samples=num_samples)
+            xl_blocked = vis == 0
             intensity *= vis
     elif transmission_mask is not None:
         inside_obs = transmission_mask < 1.0
         intensity[inside_obs] *= transmission_mask[inside_obs]
-    return intensity
+        xl_blocked = transmission_mask == 0
+    return intensity, xl_blocked
 
 
 def run_simulation(fans_circulares, fans_ovales, obstacles, img_width, img_height,
@@ -143,6 +147,8 @@ def run_simulation(fans_circulares, fans_ovales, obstacles, img_width, img_heigh
     total_fans = len(fans_circulares) + len(fans_ovales)
     fan_idx = 0
 
+    xl_blocked_all = np.ones((sim_h, sim_w), dtype=bool) if total_fans > 0 else np.zeros((sim_h, sim_w), dtype=bool)
+
     scaled_obstacles = []
     for obs in obstacles:
         pts = (obs["points"] * np.array([scale_x, scale_y])).astype(np.int32)
@@ -151,15 +157,18 @@ def run_simulation(fans_circulares, fans_ovales, obstacles, img_width, img_heigh
 
     transmission_mask = build_transmission_mask(scaled_obstacles, sim_h, sim_w)
 
+    has_xl = any(o["transmission"] == 0 for o in scaled_obstacles)
+
     obstacle_mask_full = np.ones((sim_h, sim_w), dtype=np.uint8)
     obstacle_mask_full[transmission_mask == 0] = 0
 
     for fan in fans_circulares:
         scaled_fan = {"x": fan["x"] * scale_x, "y": fan["y"] * scale_y, "r": fan["r"] * max(scale_x, scale_y)}
         intensity = compute_circular_fan_intensity(scaled_fan, grid_x, grid_y, decay_rate, multiplier)
-        intensity = _apply_los(scaled_fan["x"], scaled_fan["y"], intensity, sim_h, sim_w,
+        intensity, fan_xl_blocked = _apply_los(scaled_fan["x"], scaled_fan["y"], intensity, sim_h, sim_w,
                                obstacles, obstacle_mask_full, scaled_obstacles, use_los,
                                transmission_mask=transmission_mask)
+        xl_blocked_all &= fan_xl_blocked
         total_intensity += intensity
         fan_idx += 1
         if progress_callback:
@@ -174,9 +183,10 @@ def run_simulation(fans_circulares, fans_ovales, obstacles, img_width, img_heigh
             "angle": fan.get("angle", 0),
         }
         intensity = compute_oval_fan_intensity(scaled_fan, grid_x, grid_y, decay_rate, multiplier)
-        intensity = _apply_los(scaled_fan["x"], scaled_fan["y"], intensity, sim_h, sim_w,
+        intensity, fan_xl_blocked = _apply_los(scaled_fan["x"], scaled_fan["y"], intensity, sim_h, sim_w,
                                obstacles, obstacle_mask_full, scaled_obstacles, use_los,
                                transmission_mask=transmission_mask)
+        xl_blocked_all &= fan_xl_blocked
         total_intensity += intensity
         fan_idx += 1
         if progress_callback:
@@ -186,4 +196,6 @@ def run_simulation(fans_circulares, fans_ovales, obstacles, img_width, img_heigh
     partial_obs = (transmission_mask > 0) & (transmission_mask < 1.0)
     total_intensity[partial_obs] *= transmission_mask[partial_obs]
 
-    return total_intensity, sim_w, sim_h
+    xl_shadow = xl_blocked_all & has_xl
+
+    return total_intensity, sim_w, sim_h, xl_shadow

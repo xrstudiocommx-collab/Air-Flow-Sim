@@ -156,7 +156,7 @@ def render():
         def update_progress(val):
             progress_bar.progress(min(val, 1.0), text=f"Procesando ventilador... {int(val * 100)}%")
 
-        total_intensity, sim_w, sim_h = run_simulation(
+        total_intensity, sim_w, sim_h, xl_shadow = run_simulation(
             fans_circ, fans_oval, obstacles,
             w, h, decay_rate, multiplier, resolution, use_los,
             progress_callback=update_progress,
@@ -176,6 +176,13 @@ def render():
             masked, cmap=CMAP_COLD_AIR, alpha=0.55,
             extent=[0, w, h, 0], vmin=0, vmax=vmax,
         )
+
+        if np.any(xl_shadow):
+            shadow_rgba = np.zeros((sim_h, sim_w, 4), dtype=np.float32)
+            shadow_rgba[xl_shadow, 0] = 1.0
+            shadow_rgba[xl_shadow, 3] = 0.5
+            ax.imshow(shadow_rgba, extent=[0, w, h, 0], interpolation="bilinear")
+
         ax.axis("off")
         cbar = plt.colorbar(im, ax=ax, shrink=0.8)
         cbar.set_label("Intensidad de flujo (azul = mayor, rojo = menor)", fontsize=9)
