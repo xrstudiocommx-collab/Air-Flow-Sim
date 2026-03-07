@@ -5,8 +5,15 @@ import math
 
 def compute_circular_fan_intensity(fan, grid_x, grid_y, decay_rate, multiplier):
     fx, fy = fan["x"], fan["y"]
+    radius = fan.get("r", 0)
     dist = np.sqrt((grid_x - fx) ** 2 + (grid_y - fy) ** 2)
-    intensity = multiplier * np.exp(-dist * decay_rate)
+
+    intensity = np.zeros_like(dist)
+    interior = dist <= radius
+    intensity[interior] = multiplier
+    exterior = dist > radius
+    intensity[exterior] = multiplier * np.exp(-(dist[exterior] - radius) * decay_rate)
+
     return intensity
 
 
@@ -26,8 +33,13 @@ def compute_oval_fan_intensity(fan, grid_x, grid_y, decay_rate, multiplier):
     a = max(rx, 1)
     b = max(ry, 1)
 
-    norm_dist_sq = (dx_rot / a) ** 2 + (dy_rot / b) ** 2
-    intensity = multiplier * np.exp(-np.sqrt(norm_dist_sq) * decay_rate)
+    norm_dist = np.sqrt((dx_rot / a) ** 2 + (dy_rot / b) ** 2)
+
+    intensity = np.zeros_like(norm_dist)
+    interior = norm_dist <= 1.0
+    intensity[interior] = multiplier
+    exterior = norm_dist > 1.0
+    intensity[exterior] = multiplier * np.exp(-(norm_dist[exterior] - 1.0) * decay_rate * max(a, b))
 
     forward = dx_rot > 0
     directional = np.where(forward, 1.0, 0.3)
@@ -136,7 +148,7 @@ def run_simulation(fans_circulares, fans_ovales, obstacles, img_width, img_heigh
         scaled_obstacles.append(scaled_obs)
 
     for fan in fans_circulares:
-        scaled_fan = {"x": fan["x"] * scale_x, "y": fan["y"] * scale_y, "r": fan["r"]}
+        scaled_fan = {"x": fan["x"] * scale_x, "y": fan["y"] * scale_y, "r": fan["r"] * max(scale_x, scale_y)}
         intensity = compute_circular_fan_intensity(scaled_fan, grid_x, grid_y, decay_rate, multiplier)
         intensity = _apply_los(scaled_fan["x"], scaled_fan["y"], intensity, sim_h, sim_w,
                                obstacles, obstacle_mask_full, scaled_obstacles, use_los)

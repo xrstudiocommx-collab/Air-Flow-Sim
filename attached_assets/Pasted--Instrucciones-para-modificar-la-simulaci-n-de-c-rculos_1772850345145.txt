@@ -1,0 +1,54 @@
+ Instrucciones para modificar la simulación de círculos (ventiladores de techo)
+1. Obtener el radio del círculo dibujado
+En el código donde se procesan los objetos del canvas (st_canvas), los círculos vienen con propiedades como left, top, width, height y a veces radius.
+Debes extraer el radio de forma confiable:
+
+Si el objeto tiene radius (en el JSON), úsalo.
+
+Si no, usa width / 2 (asumiendo que es un círculo perfecto, width == height).
+
+2. Modificar la función de intensidad para cada ventilador
+En el archivo simulation.py (o donde esté el cálculo), cambia la función que genera la matriz de intensidad de un ventilador de techo.
+
+Código actual (supuesto):
+python
+def intensidad_ventilador(center, multiplier, decay, grid_x, grid_y):
+    dist = np.sqrt((grid_x - center[0])**2 + (grid_y - center[1])**2)
+    return multiplier * np.exp(-dist * decay)
+Código nuevo:
+python
+def intensidad_ventilador(center, radius, multiplier, decay, grid_x, grid_y):
+    dist = np.sqrt((grid_x - center[0])**2 + (grid_y - center[1])**2)
+    intensidad = np.zeros_like(dist)
+    
+    # Dentro del círculo: intensidad máxima constante
+    interior = dist <= radius
+    intensidad[interior] = multiplier
+    
+    # Fuera del círculo: decaimiento desde el borde
+    fuera = dist > radius
+    intensidad[fuera] = multiplier * np.exp(-(dist[fuera] - radius) * decay)
+    
+    return intensidad
+3. Ajustar la llamada a la función
+Cuando iteres sobre los ventiladores de tipo "circle", pasa el radius obtenido en el paso 1 a esta función.
+
+4. Consideraciones adicionales
+Asegúrate de que decay sea un valor positivo. Si decay es 0, se mantiene constante en todo el espacio (puedes manejarlo como caso especial si es necesario).
+
+Si hay múltiples ventiladores, las intensidades se suman normalmente.
+
+El mapa de calor inverso (azul = alto, rojo = bajo) se mantiene igual, pero ahora las zonas dentro de los círculos serán completamente azules.
+
+5. Extensión a óvalos (AirFree)
+Si luego quieres aplicar la misma lógica a los óvalos (flujo direccional), deberás usar una distancia elíptica normalizada:
+
+Dentro de la elipse: intensidad constante.
+
+Fuera: decaimiento basado en la distancia desde el borde de la elipse.
+Pero por ahora, concéntrate en los círculos.
+
+🧪 Prueba rápida
+Una vez implementado, dibuja un círculo y genera el mapa de calor. Verás que todo el interior se ve azul, y el degradado a rojo comienza justo en el borde.
+
+Si el cambio no se nota, verifica que el radius se esté calculando bien (por ejemplo, mostrando su valor en la interfaz temporalmente) y que la función modificada se esté usando correctamente.
