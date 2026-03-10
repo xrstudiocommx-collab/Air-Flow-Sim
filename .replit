@@ -20,7 +20,6 @@ PORT = "5000"
 [deployment]
 deploymentTarget = "autoscale"
 run = ["streamlit", "run", "app.py", "--server.port=5000", "--server.address=0.0.0.0", "--server.enableCORS=false", "--server.enableXsrfProtection=false"]
-build = ["npm", "run", "build"]
 
 [workflows]
 runButton = "Project"
