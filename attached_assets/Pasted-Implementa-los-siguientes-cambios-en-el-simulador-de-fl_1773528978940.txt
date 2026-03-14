@@ -1,0 +1,103 @@
+Implementa los siguientes cambios en el simulador de flujo de aire para crear un modelo bidimensional de transferencia de calor que simule el perfil térmico de un abanico de pared con termografía inversa (azul = frío, rojo = calor ambiente).
+
+## 1. Geometría del abanico de pared
+- Al dibujar un rectángulo (representando el abanico de pared), este define:
+  - **Origen del flujo**: La cara vertical izquierda del rectángulo (X=0 en coordenadas locales del objeto). Esta es la línea desde donde sale el aire frío.
+  - **Ancho del abanico**: La altura del rectángulo (dimensión Y), que representa la apertura vertical del flujo.
+  - **Extensión del flujo**: El largo del rectángulo (dimensión X), que determina hasta dónde llega el núcleo de aire frío (azul marino) antes de comenzar el degradado.
+- El usuario dibuja el rectángulo arrastrando desde el origen (cara izquierda) hasta el punto final (extremo del flujo). La dirección del arrastre define el sentido del flujo.
+
+## 2. Vector de dirección (flecha blanca)
+- Sobre el rectángulo dibujado, superponer una **flecha blanca** que:
+  - Comience en el centro de la cara izquierda (origen del flujo).
+  - Se extienda horizontalmente hasta el extremo derecho del rectángulo (o más allá, si se configura).
+  - Incluya una punta de flecha al final para indicar la dirección del flujo.
+- Esta flecha debe ser visible en el canvas y persistir al rotar el rectángulo (la flecha se mantiene horizontal en coordenadas locales del objeto).
+- La flecha se dibuja usando la capa de vectores del canvas o mediante anotaciones SVG superpuestas.
+
+## 3. Modelo térmico inverso con paleta de colores específica
+Crear un degradado radial elíptico con la siguiente secuencia de colores, en orden de mayor a menor intensidad de frío:
+
+| Zona | Color | Representación |
+|------|-------|----------------|
+| Núcleo | Azul marino (#000080) | Aire más frío, origen del flujo |
+| Interior | Azul claro (#4169E1) | Transición suave |
+| Expansión | Blanco (#FFFFFF) | Mezcla inicial |
+| Transición | Amarillo (#FFFF00) | Calentamiento |
+| Periferia | Naranja (#FFA500) | Aire templado |
+| Ambiente | Rojo suave (#FF6347) | Temperatura ambiente, degradado final |
+
+- Todas las transiciones deben ser **degradados suaves y continuos**, sin bordes definidos.
+- La opacidad general debe ser ajustable (ej. 0.6) para permitir ver el plano arquitectónico de fondo.
+
+## 4. Forma elíptica alargada (chorro de aire)
+- El gradiente NO debe ser circular. Debe formar una **elipse altamente alargada horizontalmente**:
+  - **Eje mayor (X)**: Se extiende a lo largo de la dirección del flujo, con longitud = largo del rectángulo * factor de alcance (configurable).
+  - **Eje menor (Y)**: Se expande verticalmente desde el centro del rectángulo con una apertura proporcional a la altura del rectángulo.
+  - **Foco**: El origen de la elipse está en el centro de la cara izquierda del rectángulo.
+- La intensidad del flujo decae según:
+  - **Distancia frontal**: A lo largo del eje X, el núcleo azul marino se mantiene hasta el final del rectángulo, luego degrada.
+  - **Distancia lateral**: A lo largo del eje Y, el degradado comienza inmediatamente desde el centro hacia arriba/abajo, creando la forma elíptica.
+- Fórmula sugerida para la intensidad en un punto (x_local, y_local):
+  ```python
+  # Coordenadas locales: origen en cara izquierda, X positivo hacia la derecha
+  # a = semi-eje X (alcance total del flujo)
+  # b = semi-eje Y (apertura vertical, proporcional a altura/2)
+  x_norm = (x_local - offset) / a  # offset = 0 para el núcleo
+  y_norm = y_local / b
+  dist_elip = sqrt(x_norm**2 + y_norm**2)
+  intensidad = multiplier * exp(-(dist_elip - 1) * decay) if dist_elip > 1 else multiplier
+Ajustar offset para que el núcleo (dist_elip <= 1) cubra exactamente el rectángulo.
+
+5. Integración con el canvas y controles existentes
+Mantener todos los controles actuales: tasa de decaimiento, multiplicador de intensidad, resolución, línea de vista.
+
+Nuevo control: Selector de opacidad del mapa de calor (slider 0.3-1.0) para ajustar transparencia.
+
+Los obstáculos (polígonos) deben interactuar con este nuevo modelo:
+
+Si un punto está dentro de un obstáculo, intensidad *= factor_transmisión.
+
+Línea de vista: trazar desde múltiples puntos de la cara frontal (origen) hacia el punto evaluado para detectar bloqueos.
+
+6. Visualización en capas
+Capa fondo: Plano arquitectónico original (imagen cargada).
+
+Capa térmica: Mapa de calor elíptico con degradado suave y opacidad ajustable.
+
+Capa vectorial: Flecha blanca de dirección superpuesta.
+
+Capa de ejes: Pequeños ejes cartesianos (X, Y) en esquina superior izquierda con etiquetas.
+
+7. Rotación de objetos
+Al rotar el rectángulo, toda la geometría (elipse, flecha) debe rotar con él.
+
+La dirección del flujo permanece local al objeto: la flecha siempre apunta en la dirección del eje X local positivo.
+
+Usar matriz de rotación para transformar puntos al sistema global.
+
+8. Pruebas de verificación
+Dibujar rectángulo horizontal: verificar que el azul marino cubra todo el rectángulo y degrade suavemente hacia afuera formando una elipse alargada.
+
+Rotar 45°: la mancha térmica debe rotar manteniendo la forma elíptica.
+
+Colocar obstáculos: deben bloquear según su factor (especialmente XL, que debe mostrar sombra roja).
+
+Ajustar opacidad: debe verse el plano de fondo.
+
+Exportar imagen: debe incluir todas las capas (térmica + flecha + plano).
+
+9. Mantener funcionalidades existentes
+Autenticación con roles (superadmin, admin, cliente).
+
+Gestión de proyectos y asignación a clientes.
+
+Exportación PNG y CSV.
+
+Modo oscuro/claro.
+
+Corrección de dibujo de polígonos (con botón "Finalizar").
+
+Capa roja para obstáculos XL (sombra trasera).
+
+Implementar con código limpio, comentado y eficiente. Asegurar que la aplicación funcione sin errores en Replit.

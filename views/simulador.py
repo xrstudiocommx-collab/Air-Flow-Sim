@@ -12,9 +12,19 @@ import pandas as pd
 from datetime import datetime
 from streamlit_drawable_canvas import st_canvas
 
+# Thermographic inverse palette:
+#   low intensity  (ambient / warm) → red shades
+#   high intensity (core cold flow) → navy blue
 CMAP_COLD_AIR = LinearSegmentedColormap.from_list(
-    "cold_air",
-    ["#D32F2F", "#FF8A65", "#FFD54F", "#FFF9C4", "#E0F7FA", "#80DEEA", "#4FC3F7", "#1E88E5", "#0D47A1", "#080A2E"],
+    "cold_air_thermo",
+    [
+        "#FF6347",  # soft red    – ambient temperature (lowest intensity)
+        "#FFA500",  # orange      – slightly cooler
+        "#FFFF00",  # yellow      – transitioning
+        "#FFFFFF",  # white       – mixing zone
+        "#4169E1",  # royal blue  – cool air
+        "#000080",  # navy        – core cold flow (highest intensity)
+    ],
     N=256,
 )
 
@@ -181,6 +191,11 @@ def render():
         multiplier = st.slider("Multiplicador de intensidad", 1.0, 20.0, 10.0, 0.5)
         resolution = st.selectbox("Resolucion", ["Baja", "Media", "Alta"], index=1)
         use_los = st.checkbox("Linea de vista (bloqueo por obstaculos)", value=True)
+        heatmap_alpha = st.slider(
+            "Opacidad del mapa termico",
+            min_value=0.3, max_value=1.0, value=0.6, step=0.05,
+            help="Ajusta la transparencia del mapa de calor para ver el plano de fondo",
+        )
 
         st.divider()
         st.subheader("Herramientas de Dibujo")
@@ -425,7 +440,7 @@ def render():
         vmax = float(np.max(valid_vals)) if len(valid_vals) > 0 else 1.0
         vmax = max(vmax, 0.01)
         im = ax.imshow(
-            masked, cmap=CMAP_COLD_AIR, alpha=0.55,
+            masked, cmap=CMAP_COLD_AIR, alpha=heatmap_alpha,
             extent=[0, w, h, 0], vmin=0, vmax=vmax,
         )
 
@@ -457,9 +472,20 @@ def render():
                         bbox=dict(boxstyle="round,pad=0.2",
                                   facecolor=color_map.get(size_label, "red"), alpha=0.7))
 
+        # Small cartesian axis compass in the upper-left corner
+        pad = max(w, h) * 0.035
+        arrow_len = max(w, h) * 0.045
+        ox, oy = pad, pad
+        ax.annotate("", xy=(ox + arrow_len, oy), xytext=(ox, oy),
+                    arrowprops=dict(arrowstyle="->", color="white", lw=1.5))
+        ax.annotate("", xy=(ox, oy + arrow_len), xytext=(ox, oy),
+                    arrowprops=dict(arrowstyle="->", color="white", lw=1.5))
+        ax.text(ox + arrow_len + 3, oy, "X", color="white", fontsize=7, va="center", fontweight="bold")
+        ax.text(ox, oy + arrow_len + 3, "Y", color="white", fontsize=7, ha="center", fontweight="bold")
+
         ax.axis("off")
         cbar = plt.colorbar(im, ax=ax, shrink=0.8)
-        cbar.set_label("Intensidad de flujo (azul = mayor, rojo = menor)", fontsize=9)
+        cbar.set_label("Intensidad termica  (azul marino = maximo frio  |  rojo = temperatura ambiente)", fontsize=8)
         st.pyplot(fig)
 
         # --- Export ---
