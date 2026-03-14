@@ -19,65 +19,73 @@ def compute_circular_fan_intensity(fan, grid_x, grid_y, decay_rate, multiplier):
 
 def compute_airfree_fan_intensity(fan, grid_x, grid_y, decay_rate, multiplier):
     """
-    AirFree pedestal fan: rectangular blower with directional flow.
+    AirFree pedestal fan with explicit flow direction angle.
 
-    The rectangle is defined in local rotated coordinates:
-      - Width axis: X_local (half_w each side)
-      - Height axis: Y_local (half_h each side)
+    The rectangle body is always filled with max intensity. Outside the body:
+      - Points in the "back half-space" (behind the back face in flow direction): intensity = 0.
+      - All other exterior points: exponential decay from the front face segment.
 
-    Flow behaviour:
-      - Interior (|x_local| <= half_w AND |y_local| <= half_h): max intensity.
-      - The "front face" is one vertical side (x_local = +half_w if front_face="right",
-        x_local = -half_w if front_face="left"). The "back face" is the opposite side.
-      - Points beyond the FRONT face: intensity = 0 (no flow leaks forward).
-      - All other exterior points: exponential decay from distance to the back face SEGMENT.
-        The back face segment runs from (x_back, -half_h) to (x_back, +half_h).
-        Distance to this segment is euclidean to the closest point on it.
+    Coordinate system (flow-aligned, centered at fan center):
+      u = projection along flow direction D
+      v = projection perpendicular to D
+
+    The rectangle's bounding box in flow coords gives:
+      u_extent  = front face distance from center (positive)
+      u_back    = back face distance from center (negative = -u_extent)
+      v_extent  = lateral half-width of the front face segment
+
+    The "front face segment" is the line u = u_extent, v in [-v_extent, +v_extent].
+    Distance to it gives a radial decay from that segment in all forward directions.
     """
-    fx, fy = fan["x"], fan["y"]
+    cx, cy = fan["x"], fan["y"]
     half_w = max(fan["half_w"], 1)
     half_h = max(fan["half_h"], 1)
-    angle_rad = math.radians(fan.get("angle", 0))
-    front_face = fan.get("front_face", "right")  # "right" or "left"
+    rect_angle = math.radians(fan.get("angle", 0))
+    flow_angle_rad = math.radians(fan.get("flow_angle", 0))
 
-    # Rotate grid to local fan coordinates
-    dx = grid_x - fx
-    dy = grid_y - fy
-    cos_a = math.cos(-angle_rad)
-    sin_a = math.sin(-angle_rad)
-    x_loc = dx * cos_a - dy * sin_a
-    y_loc = dx * sin_a + dy * cos_a
+    # Flow unit vector and its perpendicular
+    Dx = math.cos(flow_angle_rad)
+    Dy = math.sin(flow_angle_rad)
+    Px = -Dy   # perpendicular (90° CCW)
+    Py = Dx
 
-    # Determine back face x position in local coords
-    if front_face == "right":
-        x_front = half_w    # front face at +half_w
-        x_back = -half_w    # back face at -half_w; flow exits here
-    else:
-        x_front = -half_w
-        x_back = half_w
+    # Grid in flow-aligned coords centered at fan
+    gx = grid_x - cx
+    gy = grid_y - cy
+    u = gx * Dx + gy * Dy   # along flow
+    v = gx * Px + gy * Py   # perpendicular
 
-    # Interior mask: full intensity inside rectangle
-    inside = (np.abs(x_loc) <= half_w) & (np.abs(y_loc) <= half_h)
+    # Rectangle bounding box extents in flow-aligned coords.
+    # angle_diff is angle from rectangle local x-axis to flow direction.
+    angle_diff = flow_angle_rad - rect_angle
+    cos_d = math.cos(angle_diff)
+    sin_d = math.sin(angle_diff)
+    u_extent = half_w * abs(cos_d) + half_h * abs(sin_d)  # front half-extent along flow
+    v_extent = half_w * abs(sin_d) + half_h * abs(cos_d)  # lateral half-extent
 
-    # Front side mask: beyond the front face — NO flow
-    if front_face == "right":
-        front_side = x_loc > half_w
-    else:
-        front_side = x_loc < -half_w
+    # Check whether points lie inside the rectangle (use rect-local coords)
+    cos_r = math.cos(-rect_angle)
+    sin_r = math.sin(-rect_angle)
+    x_loc = gx * cos_r - gy * sin_r
+    y_loc = gx * sin_r + gy * cos_r
+    inside_rect = (np.abs(x_loc) <= half_w) & (np.abs(y_loc) <= half_h)
 
-    # For all exterior points not on the front side: compute distance to back face segment.
-    # Back face segment: from (x_back, -half_h) to (x_back, +half_h).
-    # Closest point on segment: x = x_back, y = clamp(y_loc, -half_h, half_h).
-    y_clamped = np.clip(y_loc, -half_h, half_h)
-    dist_to_back = np.sqrt((x_loc - x_back) ** 2 + (y_loc - y_clamped) ** 2)
+    # Distance from each grid point to the front face segment.
+    # Front face segment: u = u_extent, v in [-v_extent, +v_extent].
+    v_clamped = np.clip(v, -v_extent, v_extent)
+    dist_to_front = np.sqrt((u - u_extent) ** 2 + (v - v_clamped) ** 2)
 
-    intensity = np.zeros_like(x_loc, dtype=np.float32)
-    intensity[inside] = multiplier
-    exterior_back = ~inside & ~front_side
-    intensity[exterior_back] = multiplier * np.exp(
-        -dist_to_back[exterior_back] * decay_rate
+    intensity = np.zeros_like(u, dtype=np.float32)
+
+    # Interior: constant max intensity
+    intensity[inside_rect] = multiplier
+
+    # Exterior points that are NOT behind the back face (-u_extent)
+    exterior_forward = ~inside_rect & (u >= -u_extent)
+    intensity[exterior_forward] = multiplier * np.exp(
+        -dist_to_front[exterior_forward] * decay_rate
     )
-    # front_side remains 0
+    # Points with u < -u_extent (behind back face) stay at 0
 
     return intensity
 
@@ -244,27 +252,35 @@ def run_simulation(fans_circulares, fans_airfree, fans_ovales, obstacles,
         if progress_callback:
             progress_callback(fan_idx / max(total_fans, 1))
 
-    # --- AirFree pedestal fans (rectangles) ---
+    # --- AirFree pedestal fans (rectangles with explicit flow direction) ---
     for fan in fans_airfree:
+        flow_angle_rad = math.radians(fan.get("flow_angle", 0))
+        rect_angle = math.radians(fan.get("angle", 0))
+        angle_diff = flow_angle_rad - rect_angle
+        cos_d = math.cos(angle_diff)
+        sin_d = math.sin(angle_diff)
+
         scaled_fan = {
             "x": fan["x"] * scale_x,
             "y": fan["y"] * scale_y,
             "half_w": fan["half_w"] * scale_x,
             "half_h": fan["half_h"] * scale_y,
             "angle": fan.get("angle", 0),
-            "front_face": fan.get("front_face", "right"),
+            "flow_angle": fan.get("flow_angle", 0),
         }
+
+        # Bounding extent along flow axis (for back face position)
+        hw = scaled_fan["half_w"]
+        hh = scaled_fan["half_h"]
+        u_extent = hw * abs(cos_d) + hh * abs(sin_d)
+
+        # LOS origin: center of the back face in world coords
+        Dx = math.cos(flow_angle_rad)
+        Dy = math.sin(flow_angle_rad)
+        los_x = scaled_fan["x"] - u_extent * Dx
+        los_y = scaled_fan["y"] - u_extent * Dy
+
         intensity = compute_airfree_fan_intensity(scaled_fan, grid_x, grid_y, decay_rate, multiplier)
-        # LOS origin: midpoint of the back face in world coords
-        angle_rad = math.radians(scaled_fan["angle"])
-        if scaled_fan["front_face"] == "right":
-            bx_local, by_local = -scaled_fan["half_w"], 0.0
-        else:
-            bx_local, by_local = scaled_fan["half_w"], 0.0
-        cos_a = math.cos(angle_rad)
-        sin_a = math.sin(angle_rad)
-        los_x = scaled_fan["x"] + bx_local * cos_a - by_local * sin_a
-        los_y = scaled_fan["y"] + bx_local * sin_a + by_local * cos_a
         intensity, fan_xl = _apply_los(los_x, los_y, intensity, sim_h, sim_w,
                                        obstacles, obstacle_mask_full, scaled_obstacles, use_los,
                                        transmission_mask=transmission_mask)

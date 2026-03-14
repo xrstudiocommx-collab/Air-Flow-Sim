@@ -1,0 +1,63 @@
+Por favor, modifica la lógica de los abanicos de tipo "AirFree" (rectángulos) para que el flujo de aire tenga un origen y dirección definidos por una flecha que el usuario dibuja junto con el rectángulo. Actualmente, el rectángulo se dibuja y se asume que el flujo sale desde una cara. Se requiere una interacción más intuitiva:
+
+## Nueva funcionalidad para rectángulos (abanicos pedestal)
+
+1. **Dibujo del rectángulo con flecha de dirección**:
+   - Cuando el usuario selecciona la herramienta "Abanico pedestal" (rectángulo), el flujo de trabajo debe permitir:
+     a) Dibujar un rectángulo (como hasta ahora).
+     b) Después de dibujar el rectángulo, mostrar una flecha superpuesta que el usuario pueda arrastrar para definir el origen y la dirección del flujo. 
+   - Alternativa más simple: que al dibujar el rectángulo, se interprete que el flujo va desde el primer punto (origen) hacia el lado opuesto. Por ejemplo, si el usuario dibuja arrastrando de izquierda a derecha, el origen es el lado izquierdo y el flujo avanza hacia la derecha. Pero con la posibilidad de rotar después, esto se complica. Por tanto, la opción de una flecha ajustable es más robusta.
+
+   **Propuesta de implementación**:
+   - Al terminar de dibujar el rectángulo (con doble clic o botón "Finalizar rectángulo"), se crea un objeto rectángulo con una flecha por defecto (apuntando hacia la derecha del rectángulo, o hacia el lado más largo, etc.).
+   - En el sidebar, al seleccionar ese rectángulo, se muestran controles para ajustar la dirección: un slider para el ángulo de la flecha relativo al rectángulo, o simplemente dos puntos (origen y destino) que el usuario puede mover en el canvas. 
+   - Si esto es muy complejo, podemos simplificar: después de dibujar el rectángulo, el usuario hace clic en un botón "Definir dirección" y luego hace clic en el canvas para marcar el punto de origen (dentro del rectángulo o en su borde) y luego el punto de destino (en el borde opuesto o más allá). Estos dos puntos definen el vector de flujo. La línea entre ellos será la dirección principal.
+
+   Dado el alcance, recomiendo la opción de dos puntos: al terminar el rectángulo, el usuario presiona "Establecer dirección" y luego hace clic en dos puntos: primero el origen (debe estar en un lado del rectángulo) y luego el destino (debe estar en el lado opuesto o fuera). Esto define el vector. Internamente, se guarda el origen y el vector unitario, y la longitud del rectángulo en esa dirección se usa para determinar hasta dónde llega el flujo máximo.
+
+2. **Modelo de intensidad basado en origen y dirección**:
+   - El rectángulo tiene un origen O (punto dentro o en el borde) y una dirección D (vector unitario). El lado opuesto en esa dirección está a una distancia L (la proyección del rectángulo sobre D). Esta distancia L es la "longitud efectiva" del ventilador.
+   - Para cualquier punto P, se calcula la proyección t = (P - O) · D (distancia a lo largo de la dirección).
+   - También se calcula la distancia perpendicular r = |(P - O) - t * D|.
+   - La intensidad se define así:
+     - Si t < 0 (punto detrás del origen): intensidad = 0 (el ventilador no sopla hacia atrás).
+     - Si 0 <= t <= L: el punto está dentro de la zona de flujo máximo (incluyendo el interior del rectángulo). Intensidad = multiplier (máxima, azul).
+     - Si t > L: el punto está más allá del frente. La intensidad decae exponencialmente con la distancia adicional y también radialmente:
+       intensidad = multiplier * exp(- (t - L) * decay) * exp(- (r**2) / (2 * sigma**2)), donde sigma es un parámetro de dispersión lateral (puede ser proporcional a la altura del rectángulo o fijo). O más simple: usar una elipse donde el decaimiento es exponencial en todas direcciones desde el frente, pero dando más peso a la dirección axial. Por coherencia con el resto de la simulación, podemos usar un decaimiento puramente radial desde el punto más cercano del frente, pero eso complica. Lo más sencillo y consistente con lo que pides ("disipación en todas direcciones de manera radial") es: después del frente, la intensidad decae exponencialmente con la distancia euclidiana desde el frente, es decir, desde el segmento de la cara frontal. Pero como tenemos un origen y dirección, podemos usar la distancia desde el punto de proyección sobre la línea del frente (el punto O + L*D) más una componente lateral. Una fórmula práctica:
+         d = distancia euclidiana desde el punto P al segmento frontal (la línea perpendicular a D en el punto O + L*D, de longitud igual al ancho del rectángulo). Calcular la distancia mínima al segmento.
+         intensidad = multiplier * exp(- d * decay)
+       Esta fórmula trata todo el frente como una fuente lineal. Es más fácil y da un degradado radial desde el frente. Además, dentro del rectángulo (t <= L) ya tenemos intensidad máxima, y eso incluye también puntos laterales dentro del ancho.
+   - Debe considerarse que el flujo puede dispersarse lateralmente, por lo que la distancia d debería tener en cuenta la componente perpendicular al eje. Pero si usamos la distancia mínima al segmento frontal, ya se incluye esa componente.
+
+3. **Representación visual de la flecha**:
+   - En el canvas, se debe dibujar una flecha desde el origen O hasta el punto O + L*D (o hasta el frente) para indicar la dirección. Esto puede hacerse almacenando el objeto flecha como parte del rectángulo en `st.session_state` y dibujándolo con el canvas (si el canvas lo permite, se puede añadir un elemento línea con punta de flecha). Si no, se puede superponer usando `st.markdown` con SVG, pero es complicado. Una alternativa es usar el mismo canvas: cuando se renderizan los objetos guardados (`initial_drawing`), se puede incluir una línea con flecha. Pero `streamlit-drawable-canvas` no soporta flechas nativamente. Podríamos almacenar la flecha como un objeto separado (tipo "arrow") y luego, al reconstruir el canvas, dibujarla como una línea con triángulo. Esto requeriría manipular el JSON de initial_drawing. Tal vez sea más simple mostrar la dirección en el sidebar (texto) y confiar en que el usuario recuerde la orientación, pero no es ideal.
+
+   Por simplicidad, podemos añadir en el sidebar un botón "Mostrar dirección" que dibuje una flecha superpuesta temporalmente usando `st.pyplot` o similar, pero eso no se integraría en el canvas interactivo. Dado que la prioridad es la simulación correcta, podemos omitir la flecha en el canvas y solo mostrar la dirección en el panel de propiedades del objeto seleccionado. Sin embargo, el usuario pidió explícitamente una flecha. Habría que sopesar la complejidad.
+
+   **Solución híbrida**: Al seleccionar un rectángulo en el canvas, en el sidebar se muestran dos puntos (origen y destino) con coordenadas, y un botón para "Actualizar dirección" que permite hacer clic en el canvas para redefinirlos. Para la visualización en el canvas, se puede dibujar una línea punteada o una flecha usando el mismo canvas si guardamos la flecha como un objeto de tipo "line" con marcador. Pero el canvas no tiene un tipo flecha. Podríamos simularla con una línea y un triángulo al final, pero sería complejo.
+
+   Debido a la complejidad, propongo que el prompt solicite la implementación del modelo de intensidad basado en origen y dirección, y que la dirección se guarde como metadato del rectángulo (vector unitario y longitud L). Para la interacción, se puede hacer que después de dibujar el rectángulo, aparezcan dos sliders en el sidebar para ajustar el ángulo de la dirección relativo al rectángulo (0 a 360) y la posición del origen (desplazamiento a lo largo del rectángulo). Esto sería más fácil de programar y permite rotar sin alterar la dirección relativa. Además, se podría mostrar una vista previa de la dirección con una flecha dibujada con matplotlib en una pequeña figura.
+
+   El prompt debe ser claro en cuanto a la funcionalidad deseada, dejando al desarrollador la decisión de la implementación más práctica dentro de las limitaciones de las herramientas.
+
+4. **Integración con la rotación**:
+   - El rectángulo puede rotarse (si el canvas lo permite). Al rotar, la dirección de la flecha debe rotar con él (es decir, la relación entre la flecha y el rectángulo se mantiene). Esto significa que guardamos la dirección en coordenadas locales del rectángulo (por ejemplo, un vector en el sistema del rectángulo). Al rotar el rectángulo, transformamos ese vector al mundo.
+
+5. **Mantenimiento del resto**:
+   - Conservar toda la funcionalidad existente: círculos (abanicos de techo) con su interior azul y degradado radial, obstáculos con factores, línea de vista, mapa inverso, capa roja para XL, autenticación, roles, exportación, etc.
+   - Asegurar que los nuevos rectángulos con dirección se guarden en la sesión y se persistan.
+
+6. **Pruebas**:
+   - Dibujar un rectángulo, definir origen en un borde y destino en el opuesto. Generar mapa y verificar que el interior y la zona hasta el frente sean azules, y luego degradado.
+   - Rotar el rectángulo y comprobar que el flujo sigue la dirección relativa.
+   - Probar con obstáculos delante y detrás.
+   - Exportar resultados.
+
+## Resumen de cambios necesarios:
+
+- En la estructura de datos de los objetos del canvas, añadir para los rectángulos: `origen` (punto en coordenadas de la imagen), `direccion` (vector unitario), `longitud_frente` (distancia desde origen hasta el frente a lo largo de la dirección). Inicialmente, se puede establecer por defecto: origen en el centro del lado izquierdo, dirección hacia la derecha, longitud_frente = ancho del rectángulo.
+- Modificar la función de simulación para que procese los rectángulos con esta nueva lógica.
+- Añadir en el sidebar, cuando se selecciona un rectángulo, controles para ajustar el origen y dirección (por ejemplo, dos sliders para la posición relativa en el rectángulo y un slider para el ángulo, o campos numéricos). También se podría permitir hacer clic en el canvas para establecer origen y destino, pero eso requiere capturar eventos de clic fuera del canvas, lo cual es más complejo.
+- Para la visualización de la flecha, se puede dibujar una línea sobre el canvas usando `st_canvas` con un objeto adicional (tipo "line") si se añade al `initial_drawing`. Esto implica modificar el JSON de `initial_drawing` para incluir una línea desde origen hasta origen + L*direccion, y posiblemente una punta de flecha (otra línea). Esto es factible.
+
+Implementa estos cambios priorizando la claridad y mantenibilidad, y añade comentarios explicativos.
