@@ -1,0 +1,63 @@
+Por favor, modifica la lógica de los abanicos de tipo "AirFree" (rectángulos/óvalos) para que el flujo de aire se comporte de la siguiente manera:
+
+- El rectángulo tiene dos caras verticales (paralelas al eje Y). Consideramos una de ellas como la "cara frontal" (origen del flujo) y la otra como la "cara trasera".
+- El flujo se origina en la cara frontal y viaja perpendicularmente hacia la cara trasera, llenando todo el interior del rectángulo con intensidad máxima (color azul en el mapa de calor inverso).
+- Una vez que el flujo alcanza la cara trasera, desde ese borde se propaga hacia afuera en todas direcciones (radialmente) con decaimiento exponencial gobernado por la tasa de decaimiento.
+- Es decir, el degradado azul→rojo comienza en la cara trasera y se extiende hacia el exterior, mientras que todo el interior del rectángulo permanece azul.
+
+## Requisitos específicos:
+
+1. **Definición de caras frontal y trasera**:
+   - La cara frontal es uno de los lados verticales del rectángulo. El usuario debe poder elegir cuál es la frontal (izquierda o derecha) mediante un control en el sidebar después de dibujar el rectángulo (por ejemplo, dos botones: "Frontal ←" y "Frontal →"). Por defecto, se puede tomar la cara que apunta en la dirección positiva del eje X local (derecha) o la que el usuario dibujó primero, pero es preferible dar control manual.
+   - La cara trasera es la opuesta.
+
+2. **Cálculo de intensidad**:
+   - Sea el rectángulo definido en coordenadas locales (rotación aplicada). En ese sistema, el rectángulo está centrado en (0,0) con ancho (width) y alto (height). Las caras verticales están en x = -width/2 (izquierda) y x = +width/2 (derecha).
+   - Supongamos que la cara frontal elegida es la derecha (x = +width/2). Entonces la cara trasera es x = -width/2.
+   - Para un punto P (x,y) en coordenadas locales:
+     a) Si el punto está dentro del rectángulo (|x| <= width/2 y |y| <= height/2): intensidad = multiplier (máxima, azul). Esto incluye toda el área, independientemente de si está cerca de la frontal o trasera.
+     b) Si el punto está fuera del rectángulo, se calcula la distancia desde la cara trasera. La cara trasera es una línea vertical en x = -width/2 (si la frontal es derecha). Para puntos con x < -width/2 (detrás de la cara trasera), la distancia es d = |x + width/2| (distancia perpendicular a esa línea). Para puntos con x > width/2 (delante de la cara frontal) o |y| > height/2, también se considera la distancia a la cara trasera? No, según la descripción, el flujo se propaga desde la cara trasera hacia todas direcciones, así que cualquier punto fuera del rectángulo debe tener intensidad calculada en función de la distancia a la cara trasera, pero considerando también la dirección. Sin embargo, la propagación "en todas direcciones" sugiere que desde la cara trasera, el flujo irradia esféricamente (o cilíndricamente). Lo más simple es calcular la distancia euclidiana desde el punto a la línea de la cara trasera (el segmento). Pero para puntos laterales (|y| > height/2), la distancia al segmento es mayor que la distancia al punto más cercano del segmento. Usaremos la distancia al segmento de recta que representa la cara trasera (desde ( -width/2, -height/2 ) hasta ( -width/2, height/2 )).
+     c) Si el punto está fuera, intensidad = multiplier * exp(-d * decay), donde d es la distancia mínima al segmento de la cara trasera.
+   - Esto asegura que el degradado comienza justo en el borde trasero y se extiende hacia todos lados.
+
+3. **Manejo de la dirección frontal**:
+   - La elección de la cara frontal solo afecta cuál es la cara trasera (la opuesta). Si la frontal es izquierda (x = -width/2), entonces la trasera es derecha (x = +width/2), y la distancia se calcula a ese segmento.
+
+4. **Visualización de la dirección**:
+   - Para que el usuario sepa qué cara es la frontal, dibuja una flecha dentro del rectángulo que apunte desde la cara frontal hacia la cara trasera (o simplemente marca la cara frontal con un color o línea distintiva). Esto puede hacerse superponiendo una anotación en el canvas.
+
+5. **Integración con obstáculos y línea de vista**:
+   - El origen del flujo para la línea de vista debe ser la cara trasera, ya que es desde donde se propaga. Sin embargo, el interior del rectángulo ya tiene flujo, por lo que los obstáculos dentro del rectángulo no deberían afectar (pues ya hay flujo máximo). Pero si hay un obstáculo dentro, ¿debe bloquear? Probablemente sí, porque el aire no puede atravesar un obstáculo. Entonces la simulación debe considerar que el flujo dentro del rectángulo también es afectado por obstáculos (factor de transmisión). Para simplificar, podemos aplicar la misma regla: cualquier punto dentro de un obstáculo (polígono) multiplica la intensidad por el factor correspondiente, independientemente de si está dentro del rectángulo. Pero cuidado: si un obstáculo está dentro del rectángulo, la intensidad en esa zona se reduce según el factor, y eso está bien.
+   - La línea de vista para puntos fuera del rectángulo debe considerar si la línea desde la cara trasera hasta el punto intersecta obstáculos. Usaremos el centro de la cara trasera como origen para simplificar (o varios puntos a lo largo de ella, pero eso es más costoso). Por ahora, usar el punto medio de la cara trasera ( -width/2, 0 ) si la frontal es derecha, o ( width/2, 0 ) si la frontal es izquierda.
+
+6. **Parámetros ajustables**:
+   - Mantén los mismos controles (decay, multiplier, resolución, línea de vista).
+   - Añade en el sidebar, cuando se seleccione un rectángulo, un par de botones para elegir la cara frontal: "Izquierda" y "Derecha". Guarda esta elección en el objeto del ventilador.
+
+7. **Mantenimiento del resto**:
+   - No alteres la funcionalidad de círculos (abanicos de techo) ni de obstáculos.
+   - Conserva autenticación, roles, proyectos, exportación, etc.
+   - El mapa de calor debe seguir usando colormap inverso (azul alto, rojo bajo).
+
+8. **Pruebas**:
+   - Dibuja un rectángulo horizontal. Elige frontal derecha. Genera el mapa: el interior del rectángulo debe ser azul, y fuera del rectángulo, desde el lado izquierdo (cara trasera) debe haber degradado azul→rojo en todas direcciones (incluso hacia arriba, abajo, izquierda). El lado derecho (delante de la frontal) también debe tener degradado? Según la descripción, el flujo se propaga desde la cara trasera hacia todas direcciones, así que también desde la cara trasera hacia la izquierda. Pero ¿qué pasa con la zona a la derecha de la cara frontal? Esa zona está "delante" del rectángulo, pero el flujo no sale por ahí porque el origen es la cara trasera. Sin embargo, la cara frontal es por donde entra el aire, pero el rectángulo actúa como un conducto que lo lleva hasta la cara trasera. Entonces el flujo solo emerge por la cara trasera. Así que la zona a la derecha de la cara frontal no debería recibir flujo (a menos que haya otro ventilador). Por lo tanto, el degradado solo debe aparecer alrededor de la cara trasera, no alrededor de la frontal. Revisemos la instrucción: "la mancha de calor invertida llegará en azul hasta el eje Y opuesto del rectángulo y a partir de ahí inicia el degradado de los colores en todas direcciones". Esto implica que el flujo llega hasta la cara opuesta (trasera) y luego se expande. No menciona que el flujo también salga por la cara frontal. Por lo tanto, solo la cara trasera emite. La cara frontal es por donde entra, pero no emite hacia atrás. Así que los puntos detrás de la cara frontal (x > width/2 si la frontal es derecha) no reciben flujo. Esto es consistente con la idea de un ventilador que sopla en una dirección: el aire sale por la parte trasera del aparato (como un extractor o un ventilador de pedestal que tiene la salida por detrás). En un ventilador de pedestal típico, el aire es aspirado por detrás y expulsado por delante, pero aquí la analogía puede ser diferente. Para no complicar, seguiremos la descripción literal: el flujo se origina en la cara frontal, viaja dentro del rectángulo hasta la cara trasera, y desde ahí se expande. Entonces la zona detrás de la cara frontal (delante del ventilador) no tiene flujo. Eso es plausible si el ventilador está soplando hacia la cara trasera, es decir, el aire sale por la parte trasera. Podría ser un ventilador que aspira por el frente y expulsa por detrás. Pero el usuario dijo "flujo salga del EJE Y con dirección al EJE X" y luego "la mancha de calor invertida llegará en azul hasta el eje Y opuesto". Entiendo que el flujo viaja desde un lado al otro dentro del rectángulo y luego se expande desde el lado opuesto. Aceptemos eso.
+
+   En la implementación, debemos asegurar que la intensidad para puntos fuera sea cero en la zona "delante" de la cara frontal (x > width/2 si frontal derecha). Para ello, podemos definir que solo se considera la distancia a la cara trasera, pero además debemos restringir que el punto no esté en el semiplano opuesto a la dirección de emisión. Una forma simple: calcular la distancia a la cara trasera, pero si el punto está en el lado de la cara frontal (es decir, más allá de la cara frontal), la intensidad es 0. Esto se puede hacer evaluando la proyección sobre el eje x local: si la cara frontal es derecha, entonces la cara trasera está a la izquierda. Los puntos con x_local > width/2 están a la derecha de la frontal, y no deben recibir flujo. Los puntos con x_local < -width/2 están a la izquierda de la trasera, y sí pueden recibir (ya que el flujo se expande hacia la izquierda). Los puntos con x_local entre -width/2 y width/2 están dentro del rectángulo (ya tratados). Entonces, para puntos fuera del rectángulo, solo consideramos aquellos con x_local < -width/2 (si frontal derecha) o x_local > width/2 (si frontal izquierda). Es decir, la emisión es solo hacia el lado de la cara trasera, no hacia el lado de la cara frontal.
+
+   Esto es coherente con un ventilador que sopla hacia atrás (como un extractor). El usuario podría haber querido lo contrario (que sople hacia adelante), pero según su descripción, la mancha azul llega hasta el eje Y opuesto y luego degrada, dando a entender que el flujo sale por ese lado. Así que lo implementaremos así.
+
+   Por tanto, la lógica:
+   - Dentro del rectángulo: intensidad = multiplier.
+   - Fuera, solo en el lado de la cara trasera (x_local < -width/2 si frontal derecha, o x_local > width/2 si frontal izquierda): intensidad = multiplier * exp(-d * decay), donde d es la distancia al segmento de la cara trasera.
+   - En el otro lado (x_local > width/2 si frontal derecha, o x_local < -width/2 si frontal izquierda): intensidad = 0.
+   - También considerar puntos con |y_local| > height/2, pero que estén en el lado correcto de x: pueden tener distancia al segmento (la proyección vertical se toma en cuenta al calcular la distancia mínima al segmento).
+
+   Para la distancia al segmento, usaremos la distancia euclidiana al segmento de recta vertical que va desde (x_trasera, -height/2) hasta (x_trasera, height/2). Esto dará un degradado radial alrededor de ese segmento.
+
+9. **Optimización**:
+   - Implementa esto en el bucle de simulación, vectorizando con numpy para eficiencia.
+
+10. **Comentarios**:
+    - Explica en el código la lógica con claridad.
+
+Implementa estos cambios con cuidado y prueba varios escenarios.

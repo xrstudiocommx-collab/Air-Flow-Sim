@@ -4,7 +4,8 @@ import math
 
 def parse_canvas_objects(objects):
     fans_circulares = []
-    fans_ovales = []
+    fans_airfree = []   # rectangles (AirFree pedestal fans)
+    fans_ovales = []    # ellipses drawn directly
     obstacles = []
 
     for obj in objects:
@@ -41,19 +42,20 @@ def parse_canvas_objects(objects):
             })
 
         elif obj_type == "rect":
+            # AirFree pedestal fan: rectangle treated as a directional blower.
+            # half_w and half_h are the semi-dimensions.
             w = obj.get("width", 0) * scale_x
             h = obj.get("height", 0) * scale_y
             cx = left + w / 2
             cy = top + h / 2
-            rx = w / 2
-            ry = h / 2
-            fans_ovales.append({
-                "type": "oval",
+            fans_airfree.append({
+                "type": "airfree",
                 "x": cx,
                 "y": cy,
-                "rx": rx,
-                "ry": ry,
+                "half_w": w / 2,   # half width (local X axis)
+                "half_h": h / 2,   # half height (local Y axis)
                 "angle": angle,
+                "front_face": "right",  # default; overridden by UI
             })
 
         elif obj_type == "polygon":
@@ -77,7 +79,7 @@ def parse_canvas_objects(objects):
                     "transmission": 0.0,
                 })
 
-    return fans_circulares, fans_ovales, obstacles
+    return fans_circulares, fans_airfree, fans_ovales, obstacles
 
 
 def parse_path_to_points(path_data, left, top):

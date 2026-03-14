@@ -1,10 +1,12 @@
 import streamlit as st
 import numpy as np
+import math
 from PIL import Image, ImageDraw
 import matplotlib.pyplot as plt
 import matplotlib
 matplotlib.use("Agg")
 from matplotlib.colors import LinearSegmentedColormap
+import matplotlib.patches as mpatches
 import io
 import os
 import json
@@ -31,8 +33,9 @@ def _init_state():
         st.session_state["saved_obstacles"] = []
     if "polygon_points_temp" not in st.session_state:
         st.session_state["polygon_points_temp"] = []
-    if "drawing_polygon" not in st.session_state:
-        st.session_state["drawing_polygon"] = False
+    if "airfree_front_faces" not in st.session_state:
+        # dict: fan_index -> "right" | "left"
+        st.session_state["airfree_front_faces"] = {}
 
 
 def _build_initial_drawing(w, h, saved_obstacles):
@@ -73,11 +76,43 @@ def _draw_polygon_preview(bg_image, temp_points):
     for px, py in temp_points:
         draw.ellipse([px - r, py - r, px + r, py + r], fill="red", outline="white")
     if len(temp_points) >= 2:
-        flat = []
-        for p in temp_points:
-            flat.append((int(p[0]), int(p[1])))
+        flat = [(int(p[0]), int(p[1])) for p in temp_points]
         draw.line(flat, fill="red", width=2)
     return overlay
+
+
+def _draw_airfree_arrow(ax, fan):
+    """Draw a direction arrow on the heatmap showing front→back flow."""
+    cx, cy = fan["x"], fan["y"]
+    hw = fan["half_w"]
+    hh = fan["half_h"]
+    angle_rad = math.radians(fan.get("angle", 0))
+    front_face = fan.get("front_face", "right")
+
+    cos_a = math.cos(angle_rad)
+    sin_a = math.sin(angle_rad)
+
+    # Arrow goes from front face center to back face center
+    if front_face == "right":
+        x_front_local, x_back_local = hw, -hw
+    else:
+        x_front_local, x_back_local = -hw, hw
+
+    def local_to_world(xloc, yloc):
+        wx = cx + xloc * cos_a - yloc * sin_a
+        wy = cy + xloc * sin_a + yloc * cos_a
+        return wx, wy
+
+    fx, fy = local_to_world(x_front_local, 0)
+    bx, by = local_to_world(x_back_local, 0)
+
+    ax.annotate(
+        "", xy=(bx, by), xytext=(fx, fy),
+        arrowprops=dict(arrowstyle="->", color="white", lw=2),
+    )
+    ax.text((fx + bx) / 2, (fy + by) / 2, "AirFree",
+            ha="center", va="center", fontsize=7, color="white", fontweight="bold",
+            bbox=dict(boxstyle="round,pad=0.2", facecolor="#00AAFF", alpha=0.7))
 
 
 def render():
@@ -104,7 +139,7 @@ def render():
         tool_labels = {
             "transform": "Seleccionar/Mover",
             "circle": "Abanico Techo (Circulo)",
-            "rect": "Abanico Pedestal (Rectangulo/Ovalo)",
+            "rect": "Abanico Pedestal (AirFree)",
             "polygon_tool": "Obstaculo (Poligono)",
         }
         selected_tool = st.radio(
@@ -181,15 +216,12 @@ def render():
             st.session_state["sim_canvas_key"] = f"canvas_{np.random.randint(0, 1000000)}"
             st.session_state["saved_obstacles"] = []
             st.session_state["polygon_points_temp"] = []
+            st.session_state["airfree_front_faces"] = {}
             for k in list(st.session_state.keys()):
                 if k.startswith("obstacle_sizes") or k.startswith("saved_obs_size_"):
                     del st.session_state[k]
-            if "sim_bg_image" in st.session_state:
-                del st.session_state["sim_bg_image"]
-            if "sim_img_w" in st.session_state:
-                del st.session_state["sim_img_w"]
-            if "sim_img_h" in st.session_state:
-                del st.session_state["sim_img_h"]
+            for key in ["sim_bg_image", "sim_img_w", "sim_img_h"]:
+                st.session_state.pop(key, None)
             st.rerun()
 
     uploaded_file = st.file_uploader("Sube un plano arquitectonico", type=["png", "jpg", "jpeg"])
@@ -220,7 +252,6 @@ def render():
         temp_pts = st.session_state["polygon_points_temp"]
         st.caption("Haz clic en el canvas para agregar vertices del obstaculo. Usa 'Finalizar y Guardar' en el sidebar cuando tengas al menos 3 puntos.")
         preview_img = _draw_polygon_preview(bg_image, temp_pts)
-        initial = _build_initial_drawing(w, h, st.session_state["saved_obstacles"])
         canvas_result = st_canvas(
             fill_color="rgba(255, 0, 0, 0.3)",
             stroke_width=3,
@@ -246,7 +277,7 @@ def render():
                 st.session_state["polygon_points_temp"] = new_points
                 st.rerun()
     else:
-        st.caption("Circulo = abanico techo | Rectangulo = abanico pedestal (AirFree)")
+        st.caption("Circulo = abanico techo | Rectangulo = abanico AirFree")
         initial = _build_initial_drawing(w, h, st.session_state["saved_obstacles"])
         canvas_result = st_canvas(
             fill_color="rgba(255, 165, 0, 0.2)",
@@ -266,22 +297,41 @@ def render():
         return
 
     objects = canvas_result.json_data.get("objects", [])
-    fans_circ, fans_oval, canvas_obstacles = parse_canvas_objects(objects)
+    fans_circ, fans_airfree, fans_oval, canvas_obstacles = parse_canvas_objects(objects)
+
+    # --- Front face selector for each AirFree fan ---
+    if len(fans_airfree) > 0:
+        st.subheader("Direccion de los Abanicos AirFree")
+        st.caption("Selecciona la cara FRONTAL (de donde entra el aire). El flujo sale por la cara opuesta (trasera).")
+        for i, fan in enumerate(fans_airfree):
+            col_label, col_left, col_right = st.columns([3, 1, 1])
+            with col_label:
+                st.write(f"AirFree {i + 1}")
+            current = st.session_state["airfree_front_faces"].get(str(i), "right")
+            with col_left:
+                if st.button("← Frontal Izq", key=f"af_left_{i}",
+                             type="primary" if current == "left" else "secondary"):
+                    st.session_state["airfree_front_faces"][str(i)] = "left"
+                    st.rerun()
+            with col_right:
+                if st.button("Frontal Der →", key=f"af_right_{i}",
+                             type="primary" if current == "right" else "secondary"):
+                    st.session_state["airfree_front_faces"][str(i)] = "right"
+                    st.rerun()
+            fans_airfree[i]["front_face"] = st.session_state["airfree_front_faces"].get(str(i), "right")
 
     all_obstacles = list(st.session_state["saved_obstacles"])
-
-    total_obstacles = len(all_obstacles)
 
     col_m1, col_m2, col_m3 = st.columns(3)
     with col_m1:
         st.metric("Abanicos Techo", len(fans_circ))
     with col_m2:
-        st.metric("Abanicos Pedestal", len(fans_oval))
+        st.metric("Abanicos AirFree", len(fans_airfree))
     with col_m3:
-        st.metric("Obstaculos", total_obstacles)
+        st.metric("Obstaculos", len(all_obstacles))
 
     if st.button("Generar Mapa de Calor", type="primary"):
-        total_fans = len(fans_circ) + len(fans_oval)
+        total_fans = len(fans_circ) + len(fans_airfree) + len(fans_oval)
         if total_fans == 0:
             st.warning("Dibuja al menos un ventilador antes de simular.")
             return
@@ -300,7 +350,7 @@ def render():
             progress_bar.progress(min(val, 1.0), text=f"Procesando ventilador... {int(val * 100)}%")
 
         total_intensity, sim_w, sim_h, xl_shadow = run_simulation(
-            fans_circ, fans_oval, sim_obstacles,
+            fans_circ, fans_airfree, fans_oval, sim_obstacles,
             w, h, decay_rate, multiplier, resolution, use_los,
             progress_callback=update_progress,
         )
@@ -326,6 +376,11 @@ def render():
             shadow_rgba[xl_shadow, 3] = 0.5
             ax.imshow(shadow_rgba, extent=[0, w, h, 0], interpolation="bilinear")
 
+        # Draw direction arrows for AirFree fans
+        for fan in fans_airfree:
+            _draw_airfree_arrow(ax, fan)
+
+        # Draw obstacle outlines
         for obs in all_obstacles:
             pts = obs["points"]
             if len(pts) >= 3:
@@ -335,9 +390,9 @@ def render():
                 color_map = {"Ch": "#00CC00", "M": "#FFAA00", "G": "#FF6600", "XL": "#FF0000"}
                 ax.plot(poly_x, poly_y, color=color_map.get(size_label, "#FF0000"),
                         linewidth=2, linestyle="--")
-                cx = sum(p[0] for p in pts) / len(pts)
-                cy = sum(p[1] for p in pts) / len(pts)
-                ax.text(cx, cy, size_label, ha="center", va="center",
+                cx_obs = sum(p[0] for p in pts) / len(pts)
+                cy_obs = sum(p[1] for p in pts) / len(pts)
+                ax.text(cx_obs, cy_obs, size_label, ha="center", va="center",
                         fontsize=8, fontweight="bold", color="white",
                         bbox=dict(boxstyle="round,pad=0.2", facecolor=color_map.get(size_label, "red"), alpha=0.7))
 
