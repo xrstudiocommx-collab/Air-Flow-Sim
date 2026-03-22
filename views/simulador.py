@@ -510,8 +510,6 @@ def render():
 
         # --- Export ---
         st.subheader("Exportar Resultados")
-        col_e1, col_e2 = st.columns(2)
-
         buf_img = io.BytesIO()
         fig.savefig(buf_img, format="png", bbox_inches="tight", pad_inches=0, dpi=150)
         buf_img.seek(0)
@@ -528,10 +526,7 @@ def render():
         })
         csv_data = df.to_csv(index=False)
 
-        with col_e1:
-            st.download_button("Descargar Imagen (PNG)", buf_img.getvalue(), "mapa_calor.png", "image/png")
-        with col_e2:
-            st.download_button("Descargar Datos (CSV)", csv_data, "datos_flujo.csv", "text/csv")
+        st.download_button("Descargar Imagen (PNG)", buf_img.getvalue(), "mapa_calor.png", "image/png")
 
         # --- Save project ---
         st.divider()
