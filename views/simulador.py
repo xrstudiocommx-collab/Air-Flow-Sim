@@ -35,9 +35,9 @@ from utils.auth import get_current_user
 
 # Internal key → full display name (used in UI selectors)
 OBS_DISPLAY_NAMES = {
-    "Ch": "Obstaculo Chico",
-    "M":  "Obstaculo Mediano",
-    "G":  "Obstaculo Grande",
+    "Ch": "Obstáculo Chico",
+    "M":  "Obstáculo Mediano",
+    "G":  "Obstáculo Grande",
     "XL": "Pared",
 }
 
@@ -220,7 +220,7 @@ def render():
             "transform": "Seleccionar/Mover",
             "circle": "Abanico Techo (Circulo)",
             "rect": "Abanico Pedestal (AirFree)",
-            "polygon_tool": "Obstaculo (Poligono)",
+            "polygon_tool": "Obstáculo (Polígono)",
         }
         selected_tool = st.radio(
             "Modo:",
@@ -243,18 +243,18 @@ def render():
 
         if is_polygon_mode:
             st.divider()
-            st.subheader("Dibujo de Obstaculo")
+            st.subheader("Dibujo de Obstáculo")
             temp_pts = st.session_state["polygon_points_temp"]
             st.caption(f"Puntos actuales: {len(temp_pts)}")
             if len(temp_pts) >= 3:
                 obs_size_temp = st.selectbox(
-                    "Tipo de obstaculo",
+                    "Tipo de obstáculo",
                     ["Ch", "M", "G", "XL"],
                     index=3,
                     format_func=lambda k: OBS_DISPLAY_NAMES[k],
                     key="new_obs_size",
                 )
-                if st.button("Finalizar y Guardar Obstaculo", type="primary"):
+                if st.button("Finalizar y Guardar Obstáculo", type="primary"):
                     st.session_state["saved_obstacles"].append({
                         "points": list(temp_pts),
                         "size": obs_size_temp,
@@ -272,28 +272,29 @@ def render():
 
         if len(st.session_state["saved_obstacles"]) > 0:
             st.divider()
-            st.subheader("Obstaculos Guardados")
+            st.subheader("Obstáculos Guardados")
             for i, obs in enumerate(st.session_state["saved_obstacles"]):
-                cols = st.columns([2, 1, 1])
-                with cols[0]:
-                    st.write(f"{OBS_DISPLAY_NAMES.get(obs['size'], obs['size'])} {i+1} ({len(obs['points'])} vertices)")
-                with cols[1]:
-                    new_size = st.selectbox(
-                        f"Tipo {i+1}",
-                        ["Ch", "M", "G", "XL"],
-                        index=["Ch", "M", "G", "XL"].index(obs["size"]),
-                        format_func=lambda k: OBS_DISPLAY_NAMES[k],
-                        key=f"saved_obs_size_{i}",
-                        label_visibility="collapsed",
-                    )
-                    if new_size != obs["size"]:
-                        st.session_state["saved_obstacles"][i]["size"] = new_size
-                        st.session_state["saved_obstacles"][i]["transmission"] = SIZE_TRANSMISSION[new_size]
-                with cols[2]:
-                    if st.button("X", key=f"del_obs_{i}"):
+                # Row 1: name + delete button
+                row1_cols = st.columns([5, 1])
+                with row1_cols[0]:
+                    st.write(f"**{i+1}.** {OBS_DISPLAY_NAMES.get(obs['size'], obs['size'])} ({len(obs['points'])} vértices)")
+                with row1_cols[1]:
+                    if st.button("✕", key=f"del_obs_{i}"):
                         st.session_state["saved_obstacles"].pop(i)
                         st.session_state["sim_canvas_key"] = f"canvas_{np.random.randint(0, 1000000)}"
                         st.rerun()
+                # Row 2: full-width type selector
+                new_size = st.selectbox(
+                    f"Tipo obstáculo {i+1}",
+                    ["Ch", "M", "G", "XL"],
+                    index=["Ch", "M", "G", "XL"].index(obs["size"]),
+                    format_func=lambda k: OBS_DISPLAY_NAMES[k],
+                    key=f"saved_obs_size_{i}",
+                    label_visibility="collapsed",
+                )
+                if new_size != obs["size"]:
+                    st.session_state["saved_obstacles"][i]["size"] = new_size
+                    st.session_state["saved_obstacles"][i]["transmission"] = SIZE_TRANSMISSION[new_size]
 
         st.divider()
         if st.button("Limpiar Todo"):
@@ -418,7 +419,7 @@ def render():
     with col_m2:
         st.metric("Abanicos AirFree", len(fans_airfree))
     with col_m3:
-        st.metric("Obstaculos", len(all_obstacles))
+        st.metric("Obstáculos", len(all_obstacles))
 
     # --- Simulation ---
     if st.button("Generar Mapa de Calor", type="primary"):
