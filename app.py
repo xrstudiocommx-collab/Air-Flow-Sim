@@ -129,8 +129,6 @@ def show_login():
                     else:
                         st.error("Usuario o contrasena incorrectos.")
 
-        st.caption("Credenciales por defecto: admin / admin (superadmin)")
-
 
 def show_app():
     apply_theme()
