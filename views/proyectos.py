@@ -80,23 +80,21 @@ def render():
                     current_idx = i
                     break
 
-            sel = st.selectbox(
+            def _on_asignar_change(proy_id=proy["id"], opts=opciones):
+                sel_idx = st.session_state[f"asignar_{proy_id}"]
+                update_proyecto(proy_id, asignado_a=opts[sel_idx]["id"])
+                st.toast("Asignación guardada.", icon="✅")
+
+            st.selectbox(
                 "Asignar a cliente",
                 range(len(opciones)),
                 index=current_idx,
                 format_func=lambda i: opciones[i]["username"],
                 key=f"asignar_{proy['id']}",
+                on_change=_on_asignar_change,
             )
 
-            col_a, col_b = st.columns(2)
-            with col_a:
-                if st.button("Guardar asignacion", key=f"save_asign_{proy['id']}"):
-                    update_proyecto(proy["id"], asignado_a=opciones[sel]["id"])
-                    st.success("Asignacion actualizada.")
-                    st.rerun()
-
-            with col_b:
-                if st.button("Eliminar proyecto", key=f"del_proy_{proy['id']}", type="secondary"):
-                    delete_proyecto(proy["id"])
-                    st.success("Proyecto eliminado.")
-                    st.rerun()
+            if st.button("Eliminar proyecto", key=f"del_proy_{proy['id']}", type="secondary"):
+                delete_proyecto(proy["id"])
+                st.success("Proyecto eliminado.")
+                st.rerun()

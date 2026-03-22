@@ -96,24 +96,6 @@ def show_login():
     st.markdown(HIDE_SIDEBAR_CSS, unsafe_allow_html=True)
     apply_theme()
 
-    current_theme = st.session_state.get("app_theme", "Oscuro")
-
-    cols_top = st.columns([6, 1])
-    with cols_top[1]:
-        theme_options = ["Oscuro", "Claro"]
-        theme_idx = theme_options.index(current_theme) if current_theme in theme_options else 0
-        new_theme = st.selectbox(
-            "Tema",
-            theme_options,
-            index=theme_idx,
-            format_func=lambda x: f"🌙 Dark" if x == "Oscuro" else f"☀️ Light",
-            key="login_theme_select",
-            label_visibility="collapsed",
-        )
-        if new_theme != current_theme:
-            st.session_state["app_theme"] = new_theme
-            st.rerun()
-
     st.markdown(
         """
         <div style="text-align: center; padding: 2rem 0;">
@@ -196,9 +178,6 @@ def show_app():
             st.rerun()
 
         st.divider()
-        if st.button("Cerrar Sesion", use_container_width=True):
-            logout()
-            st.rerun()
 
     if selection == "Simulador":
         from views.simulador import render
@@ -212,6 +191,13 @@ def show_app():
     elif selection == "Mis Planos":
         from views.mis_planos import render
         render()
+
+    if selection != "Simulador":
+        with st.sidebar:
+            st.divider()
+            if st.button("Cerrar Sesion", use_container_width=True):
+                logout()
+                st.rerun()
 
 
 if is_logged_in():

@@ -30,7 +30,9 @@ CMAP_COLD_AIR = LinearSegmentedColormap.from_list(
 
 from utils.canvas_utils import parse_canvas_objects, SIZE_TRANSMISSION
 from utils.simulation import run_simulation
-from utils.db import create_proyecto, get_users_by_role
+from utils.side_view import run_side_view_simulation, render_side_view_figure
+from utils.streamlines import compute_streamlines, render_streamlines_figure
+from utils.db import create_proyecto
 from utils.auth import get_current_user
 
 # Internal key → full display name (used in UI selectors)
@@ -58,11 +60,14 @@ def _init_state():
     if "polygon_points_temp" not in st.session_state:
         st.session_state["polygon_points_temp"] = []
     if "airfree_angles" not in st.session_state:
-        # dict: str(fan_index) -> flow angle in degrees
         st.session_state["airfree_angles"] = {}
+    if "saved_fans_raw" not in st.session_state:
+        st.session_state["saved_fans_raw"] = []
+    if "_prev_canvas_key" not in st.session_state:
+        st.session_state["_prev_canvas_key"] = None
 
 
-def _build_initial_drawing(w, h, saved_obstacles):
+def _build_initial_drawing(w, h, saved_obstacles, saved_fans_raw=None):
     objects = []
     for obs in saved_obstacles:
         pts = obs["points"]
@@ -73,7 +78,7 @@ def _build_initial_drawing(w, h, saved_obstacles):
         fabric_pts = [{"x": p[0] - min_x, "y": p[1] - min_y} for p in pts]
         size_label = obs.get("size", "XL")
         color_map = {"Ch": "#00CC00", "M": "#FFAA00", "G": "#FF6600", "XL": "#FF0000"}
-        objects.append({  # noqa: used in _build_initial_drawing for canvas initial state
+        objects.append({
             "type": "polygon",
             "left": min_x,
             "top": min_y,
@@ -87,18 +92,61 @@ def _build_initial_drawing(w, h, saved_obstacles):
             "selectable": False,
             "evented": False,
         })
+    if saved_fans_raw:
+        for fan_obj in saved_fans_raw:
+            objects.append(fan_obj)
     return {"version": "4.4.0", "objects": objects}
 
 
-def _draw_polygon_preview(bg_image, temp_points):
-    overlay = bg_image.copy()
-    draw = ImageDraw.Draw(overlay)
+def _draw_polygon_preview(bg_image, temp_points, saved_fans_raw=None, saved_obstacles=None):
+    overlay = bg_image.copy().convert("RGBA")
+    draw_layer = Image.new("RGBA", overlay.size, (0, 0, 0, 0))
+    draw = ImageDraw.Draw(draw_layer)
+
+    if saved_fans_raw:
+        for obj in saved_fans_raw:
+            obj_type = obj.get("type", "")
+            left = obj.get("left", 0)
+            top = obj.get("top", 0)
+            sx = obj.get("scaleX", 1)
+            sy = obj.get("scaleY", 1)
+            if obj_type == "circle":
+                radius = obj.get("radius", 0)
+                cx = left + radius * sx
+                cy = top + radius * sy
+                r_draw = int(radius * max(sx, sy))
+                draw.ellipse(
+                    [int(cx - r_draw), int(cy - r_draw), int(cx + r_draw), int(cy + r_draw)],
+                    outline="#FF6600", width=2,
+                )
+                draw.text((int(cx) - 6, int(cy) - 6), "T", fill="#FF6600")
+            elif obj_type == "rect":
+                w_r = obj.get("width", 0) * sx
+                h_r = obj.get("height", 0) * sy
+                draw.rectangle(
+                    [int(left), int(top), int(left + w_r), int(top + h_r)],
+                    outline="#00AAFF", width=2,
+                )
+                draw.text((int(left + w_r / 2) - 6, int(top + h_r / 2) - 6), "P", fill="#00AAFF")
+
+    if saved_obstacles:
+        color_map = {"Ch": "#00CC00", "M": "#FFAA00", "G": "#FF6600", "XL": "#FF0000"}
+        for obs in saved_obstacles:
+            pts = obs["points"]
+            if len(pts) >= 3:
+                flat = [(int(p[0]), int(p[1])) for p in pts]
+                flat_closed = flat + [flat[0]]
+                color = color_map.get(obs.get("size", "XL"), "#FF0000")
+                draw.line(flat_closed, fill=color, width=2)
+
     r = 4
     for px, py in temp_points:
         draw.ellipse([px - r, py - r, px + r, py + r], fill="red", outline="white")
     if len(temp_points) >= 2:
         flat = [(int(p[0]), int(p[1])) for p in temp_points]
         draw.line(flat, fill="red", width=2)
+
+    overlay = Image.alpha_composite(overlay, draw_layer)
     return overlay
 
 
@@ -201,19 +249,6 @@ def render():
     st.title("Simulador de Flujo de Aire")
 
     with st.sidebar:
-        st.subheader("Parametros de Simulacion")
-        decay_rate = st.slider("Tasa de decaimiento", 0.01, 0.50, 0.10, 0.01,
-                               help="Mayor valor = el aire llega menos lejos")
-        multiplier = st.slider("Multiplicador de intensidad", 1.0, 20.0, 10.0, 0.5)
-        resolution = st.selectbox("Resolucion", ["Baja", "Media", "Alta"], index=1)
-        use_los = st.checkbox("Linea de vista (bloqueo por obstaculos)", value=True)
-        heatmap_alpha = st.slider(
-            "Opacidad del mapa termico",
-            min_value=0.3, max_value=1.0, value=0.6, step=0.05,
-            help="Ajusta la transparencia del mapa de calor para ver el plano de fondo",
-        )
-
-        st.divider()
         st.subheader("Herramientas de Dibujo")
         tool_options = ["transform", "circle", "rect", "polygon_tool"]
         tool_labels = {
@@ -296,18 +331,90 @@ def render():
                     st.session_state["saved_obstacles"][i]["size"] = new_size
                     st.session_state["saved_obstacles"][i]["transmission"] = SIZE_TRANSMISSION[new_size]
 
+        # AirFree angle controls — shown in sidebar when fans are present on canvas
+        # We use a placeholder list stored in session state, updated after canvas parse
+        airfree_sidebar_data = st.session_state.get("airfree_sidebar_fans", [])
+        if airfree_sidebar_data:
+            st.divider()
+            st.subheader("Direccion de flujo — AirFree")
+            st.caption("0°=derecha  90°=abajo  180°=izquierda  270°=arriba")
+            for i, fan in enumerate(airfree_sidebar_data):
+                key = f"airfree_angle_{i}"
+                default_angle = st.session_state["airfree_angles"].get(str(i), 0)
+                angle = st.slider(
+                    f"AirFree {i+1} — angulo",
+                    min_value=0, max_value=359,
+                    value=default_angle,
+                    step=5,
+                    format="%d°",
+                    key=key,
+                )
+                st.session_state["airfree_angles"][str(i)] = angle
+
+            # Small arrow preview in sidebar
+            if "sim_bg_image" in st.session_state:
+                _bg = st.session_state["sim_bg_image"]
+                fans_with_angles = []
+                for i, fan in enumerate(airfree_sidebar_data):
+                    f2 = dict(fan)
+                    f2["flow_angle"] = st.session_state["airfree_angles"].get(str(i), 0)
+                    fans_with_angles.append(f2)
+                arrow_preview = _draw_fans_on_bg(_bg, fans_with_angles)
+                st.image(arrow_preview, caption="Vista previa dirección", use_container_width=True)
+
         st.divider()
-        if st.button("Limpiar Todo"):
-            st.session_state["sim_canvas_key"] = f"canvas_{np.random.randint(0, 1000000)}"
-            st.session_state["saved_obstacles"] = []
-            st.session_state["polygon_points_temp"] = []
-            st.session_state["airfree_angles"] = {}
-            for k in list(st.session_state.keys()):
-                if k.startswith("saved_obs_size_") or k.startswith("airfree_angle_"):
-                    del st.session_state[k]
-            for key in ["sim_bg_image", "sim_img_w", "sim_img_h"]:
-                st.session_state.pop(key, None)
-            st.rerun()
+        st.subheader("Parametros de Simulacion")
+        decay_rate = st.slider("Tasa de decaimiento", 0.01, 0.50, 0.10, 0.01,
+                               help="Mayor valor = el aire llega menos lejos")
+        multiplier = st.slider("Multiplicador de intensidad", 1.0, 20.0, 10.0, 0.5)
+        resolution = st.selectbox("Resolucion", ["Baja", "Media", "Alta"], index=1)
+        use_los = st.checkbox("Linea de vista (bloqueo por obstaculos)", value=True)
+        heatmap_alpha = st.slider(
+            "Opacidad del mapa termico",
+            min_value=0.3, max_value=1.0, value=0.6, step=0.05,
+            help="Ajusta la transparencia del mapa de calor para ver el plano de fondo",
+        )
+
+        st.divider()
+        st.subheader("Vista Lateral (Elevación)")
+        show_side_view = st.checkbox("Mostrar vista lateral (elevación)", value=False)
+        if show_side_view:
+            ceiling_height_m = st.slider(
+                "Altura del techo (m)", 2.0, 6.0, 3.0, 0.1,
+                help="Altura total del espacio desde el suelo al techo",
+            )
+            pedestal_height_m = st.slider(
+                "Altura ventiladores pedestal (m)", 0.5, 3.0, 1.5, 0.1,
+                help="Altura a la que se ubican los ventiladores de pedestal",
+            )
+        else:
+            ceiling_height_m = 3.0
+            pedestal_height_m = 1.5
+
+        show_streamlines = st.checkbox("Mostrar flujo de aire (líneas de corriente)", value=False)
+
+        st.divider()
+        col_limpiar, col_cerrar = st.columns(2)
+        with col_limpiar:
+            if st.button("Limpiar Todo", use_container_width=True):
+                st.session_state["sim_canvas_key"] = f"canvas_{np.random.randint(0, 1000000)}"
+                st.session_state["saved_obstacles"] = []
+                st.session_state["polygon_points_temp"] = []
+                st.session_state["airfree_angles"] = {}
+                st.session_state["airfree_sidebar_fans"] = []
+                st.session_state["saved_fans_raw"] = []
+                st.session_state["_prev_canvas_key"] = None
+                for k in list(st.session_state.keys()):
+                    if k.startswith("saved_obs_size_") or k.startswith("airfree_angle_"):
+                        del st.session_state[k]
+                for key in ["sim_bg_image", "sim_img_w", "sim_img_h"]:
+                    st.session_state.pop(key, None)
+                st.rerun()
+        with col_cerrar:
+            if st.button("Cerrar Sesion", use_container_width=True):
+                from utils.auth import logout
+                logout()
+                st.rerun()
 
     # --- Plan upload ---
     uploaded_file = st.file_uploader("Sube un plano arquitectonico", type=["png", "jpg", "jpeg"])
@@ -336,8 +443,12 @@ def render():
 
     if is_polygon_mode:
         temp_pts = st.session_state["polygon_points_temp"]
-        st.caption("Haz clic en el canvas para agregar vertices del obstaculo. Usa 'Finalizar y Guardar' en el sidebar cuando tengas al menos 3 puntos.")
-        preview_img = _draw_polygon_preview(bg_image, temp_pts)
+        st.caption("Haz clic en el canvas para agregar vertices del obstaculo.")
+        preview_img = _draw_polygon_preview(
+            bg_image, temp_pts,
+            saved_fans_raw=st.session_state.get("saved_fans_raw", []),
+            saved_obstacles=st.session_state.get("saved_obstacles", []),
+        )
         canvas_result = st_canvas(
             fill_color="rgba(255, 0, 0, 0.3)",
             stroke_width=3,
@@ -362,9 +473,49 @@ def render():
             if len(new_points) > len(temp_pts):
                 st.session_state["polygon_points_temp"] = new_points
                 st.rerun()
+
+        # Polygon status panel below canvas (mirrors sidebar controls for visibility)
+        n_pts = len(st.session_state["polygon_points_temp"])
+        st.info(f"Puntos registrados: **{n_pts}** {'— mínimo 3 para finalizar' if n_pts < 3 else '— listo para finalizar'}")
+        if n_pts >= 3:
+            obs_size_main = st.selectbox(
+                "Tipo de obstáculo",
+                ["Ch", "M", "G", "XL"],
+                index=3,
+                format_func=lambda k: OBS_DISPLAY_NAMES[k],
+                key="new_obs_size_main",
+            )
+            col_fin1, col_fin2 = st.columns(2)
+            with col_fin1:
+                if st.button("Finalizar y Guardar Obstáculo", type="primary", key="finalizar_main"):
+                    st.session_state["saved_obstacles"].append({
+                        "points": list(st.session_state["polygon_points_temp"]),
+                        "size": obs_size_main,
+                        "transmission": SIZE_TRANSMISSION[obs_size_main],
+                    })
+                    st.session_state["polygon_points_temp"] = []
+                    st.session_state["sim_canvas_key"] = f"canvas_{np.random.randint(0, 1000000)}"
+                    st.rerun()
+            with col_fin2:
+                if st.button("Cancelar Polígono", key="cancelar_main"):
+                    st.session_state["polygon_points_temp"] = []
+                    st.session_state["sim_canvas_key"] = f"canvas_{np.random.randint(0, 1000000)}"
+                    st.rerun()
+        elif n_pts > 0:
+            if st.button("Cancelar Polígono", key="cancelar_main_early"):
+                st.session_state["polygon_points_temp"] = []
+                st.session_state["sim_canvas_key"] = f"canvas_{np.random.randint(0, 1000000)}"
+                st.rerun()
     else:
         st.caption("Circulo = abanico techo  |  Rectangulo = abanico AirFree pedestal")
-        initial = _build_initial_drawing(w, h, st.session_state["saved_obstacles"])
+        current_key = str(st.session_state["sim_canvas_key"])
+        canvas_was_reset = st.session_state["_prev_canvas_key"] != current_key
+        st.session_state["_prev_canvas_key"] = current_key
+        fans_for_init = st.session_state.get("saved_fans_raw", []) if canvas_was_reset else []
+        initial = _build_initial_drawing(
+            w, h, st.session_state["saved_obstacles"],
+            saved_fans_raw=fans_for_init,
+        )
         canvas_result = st_canvas(
             fill_color="rgba(255, 165, 0, 0.2)",
             stroke_width=2,
@@ -375,7 +526,7 @@ def render():
             height=h,
             drawing_mode=drawing_mode,
             initial_drawing=initial if len(initial["objects"]) > 0 else None,
-            key=str(st.session_state["sim_canvas_key"]),
+            key=current_key,
             display_toolbar=True,
         )
 
@@ -383,33 +534,29 @@ def render():
         return
 
     objects = canvas_result.json_data.get("objects", [])
-    fans_circ, fans_airfree, fans_oval, canvas_obstacles = parse_canvas_objects(objects)
 
-    # --- AirFree direction angle controls ---
-    if len(fans_airfree) > 0:
-        st.subheader("Direccion de flujo — Abanicos AirFree")
-        st.caption(
-            "Ajusta el angulo de salida del aire para cada abanico pedestal. "
-            "0° = derecha, 90° = abajo, 180° = izquierda, 270° = arriba."
+    if not is_polygon_mode:
+        fans_circ, fans_airfree, fans_oval, canvas_obstacles = parse_canvas_objects(objects)
+        raw_fans = [
+            obj for obj in objects
+            if obj.get("type", "") in ("circle", "rect", "ellipse")
+        ]
+        if raw_fans:
+            st.session_state["saved_fans_raw"] = raw_fans
+    else:
+        fans_circ, fans_airfree, fans_oval, _ = parse_canvas_objects(
+            st.session_state.get("saved_fans_raw", [])
         )
-        for i, fan in enumerate(fans_airfree):
-            key = f"airfree_angle_{i}"
-            # Default: 0° (flow pointing right). Preserved across reruns.
-            default_angle = st.session_state["airfree_angles"].get(str(i), 0)
-            angle = st.slider(
-                f"AirFree {i+1}  —  angulo de flujo",
-                min_value=0, max_value=359,
-                value=default_angle,
-                step=5,
-                format="%d°",
-                key=key,
-            )
-            st.session_state["airfree_angles"][str(i)] = angle
-            fans_airfree[i]["flow_angle"] = angle
 
-        # Draw arrow preview on canvas background so user sees the flow direction
-        arrow_bg = _draw_fans_on_bg(bg_image, fans_airfree)
-        st.image(arrow_bg, caption="Vista previa de la direccion de flujo (flecha blanca = direccion del aire)", use_container_width=False)
+    # Update sidebar AirFree fan data for next render cycle
+    if fans_airfree:
+        st.session_state["airfree_sidebar_fans"] = [dict(f) for f in fans_airfree]
+    else:
+        st.session_state["airfree_sidebar_fans"] = []
+
+    # Apply stored angles from sidebar sliders
+    for i, fan in enumerate(fans_airfree):
+        fans_airfree[i]["flow_angle"] = st.session_state["airfree_angles"].get(str(i), 0)
 
     all_obstacles = list(st.session_state["saved_obstacles"])
 
@@ -422,7 +569,11 @@ def render():
         st.metric("Obstáculos", len(all_obstacles))
 
     # --- Simulation ---
-    if st.button("Generar Mapa de Calor", type="primary"):
+    sim_btn = st.button("Generar Mapa de Calor", type="primary")
+    # Placeholder anchored immediately below the button so results render in-view
+    result_placeholder = st.empty()
+
+    if sim_btn:
         total_fans = len(fans_circ) + len(fans_airfree) + len(fans_oval)
         if total_fans == 0:
             st.warning("Dibuja al menos un ventilador antes de simular.")
@@ -506,66 +657,133 @@ def render():
         ax.axis("off")
         cbar = plt.colorbar(im, ax=ax, shrink=0.8)
         cbar.set_label("Intensidad termica  (azul marino = maximo frio  |  rojo = temperatura ambiente)", fontsize=8)
-        st.pyplot(fig)
 
-        # --- Export ---
-        st.subheader("Exportar Resultados")
-        buf_img = io.BytesIO()
-        fig.savefig(buf_img, format="png", bbox_inches="tight", pad_inches=0, dpi=150)
-        buf_img.seek(0)
-
-        intensity_clean = np.nan_to_num(total_intensity, nan=0.0)
-        ys, xs = np.mgrid[0:sim_h, 0:sim_w]
-        x_coords = (xs * (w / sim_w)).flatten()
-        y_coords = (ys * (h / sim_h)).flatten()
-        intensities = intensity_clean.flatten()
-        df = pd.DataFrame({
-            "x": np.round(x_coords, 1),
-            "y": np.round(y_coords, 1),
-            "intensidad": np.round(intensities, 4),
-        })
-        csv_data = df.to_csv(index=False)
-
-        st.download_button("Descargar Imagen (PNG)", buf_img.getvalue(), "mapa_calor.png", "image/png")
-
-        # --- Save project ---
-        st.divider()
-        st.subheader("Guardar como Proyecto")
-        nombre_proy = st.text_input(
-            "Nombre del proyecto",
-            value=f"Simulacion_{datetime.now().strftime('%Y%m%d_%H%M')}",
-        )
-        clientes = get_users_by_role("cliente")
-        asignar_options = [{"id": None, "username": "-- Sin asignar --"}] + clientes
-        asignar_sel = st.selectbox(
-            "Asignar a cliente (opcional)",
-            range(len(asignar_options)),
-            format_func=lambda i: asignar_options[i]["username"],
-        )
-
-        if st.button("Guardar Proyecto"):
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            os.makedirs("outputs", exist_ok=True)
-
-            img_path = f"outputs/{timestamp}_resultado.png"
-            csv_path = f"outputs/{timestamp}_datos.csv"
-            orig_path = f"outputs/{timestamp}_original.png"
-
-            with open(img_path, "wb") as f:
-                f.write(buf_img.getvalue())
-            with open(csv_path, "w") as f:
-                f.write(csv_data)
-            bg_image.save(orig_path)
-
-            asignado = asignar_options[asignar_sel]["id"]
-            proyecto_id = create_proyecto(
-                nombre=nombre_proy,
-                admin_id=user["id"],
-                imagen_original=orig_path,
-                imagen_resultado=img_path,
-                datos_csv=csv_path,
-                asignado_a=asignado,
+        # --- Streamlines ---
+        fig_stream = None
+        if show_streamlines:
+            stream_lines, fan_origins, stream_w, stream_h, stream_obs_mask, stream_scaled_obs = compute_streamlines(
+                fans_circ, fans_airfree, fans_oval, sim_obstacles,
+                w, h, decay_rate, multiplier, resolution, use_los,
             )
-            st.success(f"Proyecto '{nombre_proy}' guardado exitosamente (ID: {proyecto_id}).")
+            fig_stream = render_streamlines_figure(
+                bg_image, stream_lines, fan_origins, stream_w, stream_h,
+                w, h, all_obstacles, stream_scaled_obs,
+            )
+
+        # --- Side view ---
+        fig_side = None
+        if show_side_view:
+            side_intensity, side_w, side_h = run_side_view_simulation(
+                fans_circ, fans_airfree, fans_oval,
+                w, ceiling_height_m, pedestal_height_m,
+                decay_rate, multiplier, resolution,
+            )
+            fig_side = render_side_view_figure(
+                side_intensity, side_w, side_h,
+                fans_circ, fans_airfree, fans_oval,
+                w, ceiling_height_m, pedestal_height_m,
+                heatmap_alpha,
+            )
+
+        # Render results inside the anchored placeholder so they appear immediately
+        with result_placeholder.container():
+            st.subheader("Vista Superior — Mapa de Calor")
+            st.pyplot(fig)
+
+            if fig_stream is not None:
+                st.divider()
+                st.subheader("Flujo de Aire — Líneas de Corriente")
+                st.pyplot(fig_stream)
+
+            if fig_side is not None:
+                st.divider()
+                st.subheader("Vista Lateral (Elevación)")
+                st.pyplot(fig_side)
+
+            # --- Export ---
+            st.divider()
+            st.subheader("Exportar Resultados")
+
+            buf_img = io.BytesIO()
+            fig.savefig(buf_img, format="png", bbox_inches="tight", pad_inches=0, dpi=150)
+            buf_img.seek(0)
+
+            intensity_clean = np.nan_to_num(total_intensity, nan=0.0)
+            ys, xs = np.mgrid[0:sim_h, 0:sim_w]
+            x_coords = (xs * (w / sim_w)).flatten()
+            y_coords = (ys * (h / sim_h)).flatten()
+            intensities = intensity_clean.flatten()
+            df = pd.DataFrame({
+                "x": np.round(x_coords, 1),
+                "y": np.round(y_coords, 1),
+                "intensidad": np.round(intensities, 4),
+            })
+            csv_data = df.to_csv(index=False)
+
+            export_options = ["Vista Superior"]
+            if fig_stream is not None:
+                export_options.append("Flujo de Aire")
+            if fig_side is not None:
+                export_options.append("Vista Lateral")
+
+            if len(export_options) > 1:
+                export_view = st.radio(
+                    "Exportar vista:",
+                    export_options,
+                    horizontal=True,
+                    key="export_view_select",
+                )
+            else:
+                export_view = "Vista Superior"
+
+            if export_view == "Vista Superior":
+                st.download_button("Descargar Imagen (PNG)", buf_img.getvalue(), "mapa_calor.png", "image/png")
+            elif export_view == "Flujo de Aire":
+                buf_stream = io.BytesIO()
+                fig_stream.savefig(buf_stream, format="png", bbox_inches="tight", pad_inches=0, dpi=150)
+                buf_stream.seek(0)
+                st.download_button("Descargar Flujo de Aire (PNG)", buf_stream.getvalue(), "flujo_aire.png", "image/png")
+            elif export_view == "Vista Lateral":
+                buf_side = io.BytesIO()
+                fig_side.savefig(buf_side, format="png", bbox_inches="tight", pad_inches=0, dpi=150)
+                buf_side.seek(0)
+                st.download_button("Descargar Vista Lateral (PNG)", buf_side.getvalue(), "vista_lateral.png", "image/png")
+
+            # --- Save project ---
+            st.divider()
+            st.subheader("Guardar como Proyecto")
+            st.caption("La asignacion a cliente se gestiona desde la vista Proyectos.")
+            nombre_proy = st.text_input(
+                "Nombre del proyecto",
+                value=f"Simulacion_{datetime.now().strftime('%Y%m%d_%H%M')}",
+            )
+
+            if st.button("Guardar Proyecto"):
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                os.makedirs("outputs", exist_ok=True)
+
+                img_path = f"outputs/{timestamp}_resultado.png"
+                csv_path = f"outputs/{timestamp}_datos.csv"
+                orig_path = f"outputs/{timestamp}_original.png"
+
+                with open(img_path, "wb") as f:
+                    f.write(buf_img.getvalue())
+                with open(csv_path, "w") as f:
+                    f.write(csv_data)
+                bg_image.save(orig_path)
+
+                proyecto_id = create_proyecto(
+                    nombre=nombre_proy,
+                    admin_id=user["id"],
+                    imagen_original=orig_path,
+                    imagen_resultado=img_path,
+                    datos_csv=csv_path,
+                    asignado_a=None,
+                )
+                st.success(f"Proyecto '{nombre_proy}' guardado exitosamente (ID: {proyecto_id}).")
 
         plt.close(fig)
+        if fig_stream is not None:
+            plt.close(fig_stream)
+        if fig_side is not None:
+            plt.close(fig_side)

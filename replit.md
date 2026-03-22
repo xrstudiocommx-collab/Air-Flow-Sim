@@ -7,7 +7,7 @@ A Streamlit-based architectural airflow simulator with role-based authentication
 - **Framework**: Streamlit (Python)
 - **Database**: SQLite (users.db)
 - **Auth**: bcrypt password hashing
-- **Libraries**: NumPy, OpenCV (headless), Pillow, matplotlib, pandas, streamlit-drawable-canvas
+- **Libraries**: NumPy, OpenCV (headless), Pillow, matplotlib, pandas, scipy, streamlit-drawable-canvas
 
 ## Project Structure
 ```
@@ -20,7 +20,9 @@ pages/
 utils/
   db.py                   # SQLite database operations
   auth.py                 # Authentication helpers
-  simulation.py           # Airflow simulation engine
+  simulation.py           # Airflow simulation engine (top-down)
+  side_view.py            # Side-view (elevation) simulation engine
+  streamlines.py          # Airflow streamline (flow lines) visualization
   canvas_utils.py         # Canvas object parsing
 outputs/                  # Generated images and CSV files
 .streamlit/config.toml    # Theme and server config
@@ -41,7 +43,19 @@ outputs/                  # Generated images and CSV files
   - Pared (XL): 0% flow transmission (full block)
 - Line-of-sight blocking with ray-traced visibility
 - Resolution options: Baja (100x100), Media (200x200), Alta (400x400)
+- Airflow streamlines visualization (top-down flow lines):
+  - Toggle via checkbox in sidebar
+  - Green fan origins with blue flow lines radiating outward
+  - Lines deflect around obstacles following same shadow/blocking logic
+  - Velocity field computed from fan positions and obstacle geometry
+  - Exportable as separate PNG
 - Export: PNG heatmap image + CSV with x,y,intensity data
+- Side-view (elevation) visualization:
+  - Toggle via checkbox in sidebar
+  - Configurable ceiling height and pedestal fan height (meters)
+  - Ceiling fans project downward jet, pedestal fans project horizontally
+  - Same colormap and simulation parameters as top-down view
+  - Exportable as separate PNG
 
 ## Running
 Workflow: `streamlit run app.py --server.port 5000 --server.address 0.0.0.0`

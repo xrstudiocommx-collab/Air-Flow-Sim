@@ -1,0 +1,60 @@
+Agrega una nueva funcionalidad al simulador de flujo de aire sin modificar las características actuales (vista superior, autenticación, roles, canvas, obstáculos, exportación, etc.). La nueva funcionalidad debe permitir visualizar el flujo de aire en una vista lateral (elevación), generada automáticamente a partir de los ventiladores ya dibujados en el plano.
+
+## Requisitos funcionales
+
+### 1. Interfaz de usuario
+- En el sidebar, añadir un checkbox o toggle con la etiqueta "Mostrar vista lateral (elevación)".
+- Al activarlo, se debe mostrar una segunda visualización (debajo o al lado de la vista superior actual) con un gráfico que represente el flujo de aire desde una perspectiva vertical.
+- Si el checkbox está desactivado, se muestra solo la vista superior (comportamiento actual).
+
+### 2. Generación de la vista lateral
+- No se requiere cargar una nueva imagen. La vista lateral se construye a partir de la información existente:
+  - Dimensiones del plano (ancho y alto de la imagen cargada).
+  - Posiciones y tipos de ventiladores (círculos = techo, rectángulos/óvalos = pedestal).
+  - Parámetros de simulación (tasa de decaimiento, multiplicador de intensidad, línea de vista, etc.).
+- Se asume una altura típica para el espacio (por ejemplo, 3 metros). Los ventiladores de techo se colocan en la parte superior (altura máxima) y los de pedestal a una altura configurable (por defecto 1.5 m desde el suelo). En el futuro se podría permitir al usuario ajustar estas alturas, pero inicialmente se usarán valores fijos.
+- El área de simulación en la vista lateral será un rectángulo de ancho = ancho del plano (en píxeles, o escalado) y alto = altura máxima (en píxeles, por ejemplo 400). El eje horizontal representa la distancia a lo largo del plano (coordenada X), y el eje vertical representa la altura desde el suelo hasta el techo.
+
+### 3. Cálculo del flujo en vista lateral
+- Para cada ventilador, se debe proyectar su influencia en el plano vertical:
+  - **Ventilador de techo (círculo):**
+    - Ubicación: centro del círculo en el plano → coordenada X en la vista lateral.
+    - Altura: techo (valor máximo).
+    - El flujo se dirige hacia abajo (sentido negativo del eje Y) con una dispersión lateral (a lo largo del eje X). La intensidad en un punto (x, y) se calcula mediante un modelo de chorro vertical:
+      - Distancia vertical: d_y = altura_techo - y
+      - Distancia horizontal: d_x = |x - x_fan|
+      - Se puede usar una combinación: intensidad = multiplier * exp(-decay * d_y) * exp(-(d_x**2)/(2*sigma**2)), donde sigma aumenta con la distancia vertical (dispersión lateral).
+  - **Ventilador de pedestal (rectángulo/óvalo):**
+    - Ubicación: centro del objeto en el plano → coordenada X en la vista lateral.
+    - Altura: altura configurable (ej. 1.5 m).
+    - Dirección del flujo según la orientación del objeto (hacia la derecha o izquierda en vista superior). En la vista lateral, el flujo se dirige horizontalmente (a lo largo del eje X) hacia la dirección indicada, con una pequeña dispersión vertical. Se puede usar un modelo similar al de techo pero rotado.
+- Todos los ventiladores contribuyen a la intensidad total (suma) en cada punto (x, y) de la grilla lateral.
+- Se debe respetar la línea de vista si está activada, pero en vista lateral los obstáculos se consideran solo si están en la misma posición X y altura (simplificado). Inicialmente se puede omitir la línea de vista en esta vista o implementar una versión básica usando la posición de los obstáculos proyectada.
+
+### 4. Visualización
+- Usar matplotlib para generar un mapa de calor en 2D con el mismo colormap inverso (azul = alta intensidad, rojo = baja intensidad).
+- Superponer el mapa de calor sobre un fondo que represente el perfil del espacio: por ejemplo, dibujar un rectángulo que simule las paredes (suelo y techo). Etiquetar los ejes: "Distancia (X)" y "Altura".
+- Marcar la posición de los ventiladores en la vista lateral con íconos (por ejemplo, un pequeño círculo para techo, un rectángulo para pedestal) y una flecha indicando la dirección del flujo (para pedestal).
+- Incluir una leyenda que explique la escala de colores.
+
+### 5. Integración con el resto de la aplicación
+- La generación de la vista lateral debe realizarse cuando el usuario hace clic en "Generar Mapa de Calor" y el checkbox está activado.
+- Si el checkbox está activado, se deben generar **dos** gráficos: el top-down original y el nuevo side-view. Ambos deben mostrarse en la interfaz (por ejemplo, en dos columnas o uno debajo del otro).
+- Los botones de exportación (PNG, CSV) deben aplicarse al gráfico que esté activo (por ejemplo, exportar vista superior o vista lateral según selección). Se puede añadir un selector para elegir qué vista exportar.
+- Los parámetros de simulación (decaimiento, multiplicador, resolución) deben afectar ambas vistas de manera consistente.
+
+### 6. Parámetros específicos para vista lateral
+- En el sidebar, añadir controles para la altura del techo (slider en metros, por defecto 3.0) y la altura de los ventiladores de pedestal (slider, por defecto 1.5). Estos valores se usarán para convertir coordenadas píxel a metros (se puede asumir una relación 1 píxel = 0.05 m si se desea, o usar una escala basada en la imagen). Para simplificar, se puede trabajar en píxeles de la imagen y definir que la altura máxima es un valor fijo de píxeles (ej. 300) que corresponde a la altura real configurada.
+
+### 7. Mantenimiento del código existente
+- No alteres la lógica de la vista superior actual (cálculo en grilla 2D top-down).
+- Asegura que el canvas, dibujo de objetos, gestión de usuarios, proyectos, etc., sigan funcionando igual.
+- La nueva funcionalidad debe ser modular, preferiblemente en un nuevo archivo `utils/side_view.py` que contenga las funciones para calcular y graficar la vista lateral.
+
+### 8. Pruebas sugeridas
+- Activar el checkbox con un plano que tenga un ventilador de techo centrado. Verificar que la vista lateral muestre un chorro descendente con dispersión lateral.
+- Añadir un ventilador de pedestal orientado hacia la derecha. Verificar que en la vista lateral aparezca a la altura indicada y con flujo horizontal.
+- Cambiar los parámetros (decaimiento, multiplicador) y observar cómo se modifica el mapa lateral.
+- Exportar la imagen lateral y comprobar que se guarda correctamente.
+
+Implementa estos cambios con cuidado, asegurándote de que la aplicación siga funcionando sin errores 
