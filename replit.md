@@ -34,7 +34,11 @@ outputs/                  # Generated images and CSV files
 ## Simulation Features
 - Circular fans (ceiling) with radial exponential decay
 - Oval fans (pedestal/AirFree) with directional airflow along major axis
-- Polygon obstacles with configurable transmission (Ch:80%, M:50%, G:20%, XL:0%)
+- Polygon obstacles with configurable transmission:
+  - Obstaculo Chico (Ch): 80% flow transmission
+  - Obstaculo Mediano (M): 50% flow transmission
+  - Obstaculo Grande (G): 20% flow transmission
+  - Pared (XL): 0% flow transmission (full block)
 - Line-of-sight blocking with ray-traced visibility
 - Resolution options: Baja (100x100), Media (200x200), Alta (400x400)
 - Export: PNG heatmap image + CSV with x,y,intensity data

@@ -33,6 +33,22 @@ from utils.simulation import run_simulation
 from utils.db import create_proyecto, get_users_by_role
 from utils.auth import get_current_user
 
+# Internal key → full display name (used in UI selectors)
+OBS_DISPLAY_NAMES = {
+    "Ch": "Obstaculo Chico",
+    "M":  "Obstaculo Mediano",
+    "G":  "Obstaculo Grande",
+    "XL": "Pared",
+}
+
+# Internal key → short map label (shown on heatmap overlay)
+OBS_MAP_LABELS = {
+    "Ch": "Obj. Ch",
+    "M":  "Obj. M",
+    "G":  "Obj. G",
+    "XL": "Pared",
+}
+
 
 def _init_state():
     if "sim_canvas_key" not in st.session_state:
@@ -57,7 +73,7 @@ def _build_initial_drawing(w, h, saved_obstacles):
         fabric_pts = [{"x": p[0] - min_x, "y": p[1] - min_y} for p in pts]
         size_label = obs.get("size", "XL")
         color_map = {"Ch": "#00CC00", "M": "#FFAA00", "G": "#FF6600", "XL": "#FF0000"}
-        objects.append({
+        objects.append({  # noqa: used in _build_initial_drawing for canvas initial state
             "type": "polygon",
             "left": min_x,
             "top": min_y,
@@ -232,9 +248,10 @@ def render():
             st.caption(f"Puntos actuales: {len(temp_pts)}")
             if len(temp_pts) >= 3:
                 obs_size_temp = st.selectbox(
-                    "Tamano del obstaculo",
+                    "Tipo de obstaculo",
                     ["Ch", "M", "G", "XL"],
                     index=3,
+                    format_func=lambda k: OBS_DISPLAY_NAMES[k],
                     key="new_obs_size",
                 )
                 if st.button("Finalizar y Guardar Obstaculo", type="primary"):
@@ -259,12 +276,13 @@ def render():
             for i, obs in enumerate(st.session_state["saved_obstacles"]):
                 cols = st.columns([2, 1, 1])
                 with cols[0]:
-                    st.write(f"Obstaculo {i+1} ({len(obs['points'])} vertices)")
+                    st.write(f"{OBS_DISPLAY_NAMES.get(obs['size'], obs['size'])} {i+1} ({len(obs['points'])} vertices)")
                 with cols[1]:
                     new_size = st.selectbox(
-                        f"Tam {i+1}",
+                        f"Tipo {i+1}",
                         ["Ch", "M", "G", "XL"],
                         index=["Ch", "M", "G", "XL"].index(obs["size"]),
+                        format_func=lambda k: OBS_DISPLAY_NAMES[k],
                         key=f"saved_obs_size_{i}",
                         label_visibility="collapsed",
                     )
@@ -467,7 +485,8 @@ def render():
                         linewidth=2, linestyle="--")
                 cx_o = sum(p[0] for p in pts) / len(pts)
                 cy_o = sum(p[1] for p in pts) / len(pts)
-                ax.text(cx_o, cy_o, size_label, ha="center", va="center",
+                map_label = OBS_MAP_LABELS.get(size_label, size_label)
+                ax.text(cx_o, cy_o, map_label, ha="center", va="center",
                         fontsize=8, fontweight="bold", color="white",
                         bbox=dict(boxstyle="round,pad=0.2",
                                   facecolor=color_map.get(size_label, "red"), alpha=0.7))
