@@ -1,0 +1,52 @@
+Agrega una nueva funcionalidad en el simulador de flujo de aire llamada "Líneas de Corriente". Esta característica permitirá visualizar de forma gráfica cómo el flujo de los ventiladores de techo se dispersa radialmente, se mezcla cuando varios flujos se cruzan y puede ser limitado por zonas definidas por el usuario. Mantén toda la funcionalidad existente (autenticación, roles, dibujo de objetos, mapas de calor, vista lateral, exportación, etc.).
+
+## 1. Nueva herramienta en el canvas: "Delimitador de flujo" (polígono cerrado)
+- En el sidebar, junto a las herramientas de dibujo, añade una nueva opción: **"✏️ Delimitar flujo"**.
+- Cuando se seleccione, el canvas debe permitir dibujar **polígonos cerrados** (el usuario hace clic para añadir vértices y un botón "Terminar polígono" finaliza y guarda la figura).
+- Cada polígono representa una **zona de atenuación del flujo**: dentro de esa zona, la intensidad del flujo de cualquier ventilador será modificada según una regla de degradado.
+- Almacena estos polígonos en `st.session_state["flow_limits"]` junto con un identificador único.
+
+## 2. Comportamiento del flujo dentro de las zonas delimitadas
+- El flujo de cada ventilador de techo (círculo) se calcula normalmente (intensidad base = multiplier * exp(-distancia * decay)).
+- Si un punto (x,y) está dentro de algún polígono delimitador, se aplica un **factor de atenuación adicional** que depende de la distancia desde el centro del ventilador al borde del polígono en esa dirección.
+- Efecto visual deseado (según referencia del cliente):
+  - **Azul marino intenso** en el centro del ventilador.
+  - **Degradado hacia verde** a medida que el flujo se aleja del centro.
+  - **Transparente** cuando alcanza el límite del polígono (es decir, la intensidad se reduce a cero justo en el borde).
+- Implementa la atenuación usando una función que, para cada ventilador, calcule la distancia desde el centro hasta el punto y la distancia radial hasta el borde del polígono en esa misma dirección. Si el punto está fuera del polígono, el flujo se anula. Si está dentro, la intensidad se escala linealmente con la distancia desde el centro hasta el borde: `factor = 1 - (dist_centro_punto / dist_centro_borde)`. Luego multiplica ese factor por la intensidad normal original.
+- Si un punto está dentro de varios polígonos, se aplica el factor más restrictivo (el menor).
+
+## 3. Visualización de líneas de corriente
+- Añade un checkbox en el sidebar: **"Mostrar líneas de corriente"**.
+- Cuando está activado, superpón sobre el plano (encima del mapa de calor) un conjunto de **líneas que representan la dirección del flujo**.
+- Para generar las líneas:
+  - Utiliza un campo vectorial derivado del gradiente de intensidad (o del flujo calculado). Una aproximación sencilla es:
+    - Para cada ventilador, el vector en cada punto apunta desde el centro del ventilador hacia afuera, con magnitud proporcional a la intensidad.
+    - Combina los vectores de todos los ventiladores (suma vectorial) para obtener el campo total.
+  - Usa una función de integración (por ejemplo, `streamplot` de matplotlib) para dibujar las líneas de corriente. Estas líneas mostrarán cómo se curvan y se cruzan los flujos de diferentes ventiladores.
+- Cuando dos flujos se encuentran, las líneas deben generar un efecto de "choque" o turbulencia (visualmente, se pueden dibujar líneas que se separan o se curvan bruscamente). Si es complejo, al menos asegura que las líneas se crucen y se mezclen.
+
+## 4. Colores de las líneas de corriente
+- Utiliza un colormap que refleje la intensidad del flujo a lo largo de la línea (por ejemplo, azul para baja intensidad, rojo para alta, o el mismo colormap inverso que en el mapa de calor). Esto hará que las líneas se vean más intensas cerca del ventilador.
+
+## 5. Integración con el mapa de calor
+- La nueva capa de líneas de corriente debe ser superpuesta sobre el mapa de calor (con opacidad configurable, quizás un slider adicional).
+- Al exportar la imagen (PNG), debe incluirse esta capa si está activa.
+
+## 6. Interfaz de usuario
+- En el sidebar, dentro de la sección de visualización, añade:
+  - Checkbox "Mostrar líneas de corriente"
+  - Slider "Opacidad de líneas" (0–1)
+  - Botón "Terminar polígono" (visible solo cuando se está dibujando un delimitador).
+- Lista de delimitadores dibujados con opción de eliminar cada uno.
+
+## 7. Mantenimiento del resto de funcionalidades
+- No alterar el cálculo de intensidad original para el mapa de calor, a menos que se requiera para la visualización de líneas (pero se puede calcular independientemente).
+- Asegurar que los obstáculos y la línea de vista sigan funcionando.
+
+## 8. Pruebas sugeridas
+- Dibuja un ventilador de techo y un polígono delimitador alrededor de él. Verifica que el flujo dentro del polígono degrade de azul a verde y se vuelva transparente en el borde.
+- Activa las líneas de corriente y observa cómo se curvan alrededor de obstáculos y se cruzan entre múltiples ventiladores.
+- Exporta una imagen con líneas de corriente y comprueba que se guarda correctamente.
+
+Implementa estos cambios con cuidado, añadiendo comentarios en el código. Asegura que la aplicación funcione sin errores en Replit.

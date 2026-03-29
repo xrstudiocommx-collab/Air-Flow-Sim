@@ -7,15 +7,18 @@ from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.patches import Circle, Rectangle, FancyArrow, Polygon
 import matplotlib.patheffects as pe
 
+# Thermographic inverse palette (scale 0–100):
+#   0   = intense red  (#FF0000) → ambient temperature (no cooling effect)
+#   100 = navy blue    (#000080) → maximum cold air intensity
 CMAP_COLD_AIR = LinearSegmentedColormap.from_list(
     "cold_air_thermo",
     [
-        "#FF6347",
-        "#FFA500",
-        "#FFFF00",
-        "#FFFFFF",
-        "#4169E1",
-        "#000080",
+        "#FF0000",  # intense red – 0   (ambient temperature, lowest intensity)
+        "#FFA500",  # orange      – ~20 (slightly cooler)
+        "#FFFF00",  # yellow      – ~40 (transitioning)
+        "#FFFFFF",  # white       – ~60 (mixing zone)
+        "#4169E1",  # royal blue  – ~80 (cool air)
+        "#000080",  # navy blue   – 100 (maximum cold flow, highest intensity)
     ],
     N=256,
 )
@@ -181,6 +184,11 @@ def render_side_view_figure(
     fans_circ, fans_airfree, fans_oval,
     img_width, ceiling_height_m, pedestal_height_m,
     heatmap_alpha,
+    ambient_temp=30,
+    sim_date=None,
+    sim_time=None,
+    thermal_change=22,
+    air_speed="1 m/s",
 ):
     scale_x = sim_w / img_width
     floor_px = float(sim_h)
@@ -197,15 +205,19 @@ def render_side_view_figure(
     ax.fill_between([0, sim_w], -10, 0, color="#666666", alpha=0.5)
 
     display_intensity = total_intensity.copy()
-    display_intensity[display_intensity == 0] = np.nan
-    masked = np.ma.masked_invalid(display_intensity)
+    # Scale intensities so that the typical maximum maps to ~100 (0–100 scale)
+    # 0 = ambient temperature (intense red), 100 = maximum cold air (navy blue)
     valid_vals = total_intensity[total_intensity > 0]
-    vmax = float(np.max(valid_vals)) if len(valid_vals) > 0 else 1.0
-    vmax = max(vmax, 0.01)
+    raw_max = float(np.max(valid_vals)) if len(valid_vals) > 0 else 1.0
+    raw_max = max(raw_max, 0.01)
+    scale_factor = 100.0 / raw_max
+    display_intensity = display_intensity * scale_factor
+    display_intensity[total_intensity == 0] = np.nan
+    masked = np.ma.masked_invalid(display_intensity)
 
     im = ax.imshow(
         masked, cmap=CMAP_COLD_AIR, alpha=heatmap_alpha,
-        extent=[0, sim_w, sim_h, 0], vmin=0, vmax=vmax,
+        extent=[0, sim_w, sim_h, 0], vmin=0, vmax=100,
         aspect="auto",
     )
 
@@ -266,7 +278,7 @@ def render_side_view_figure(
     ax.set_xticklabels(x_labels, fontsize=8, color="white")
 
     ax.set_xlabel("Distancia X (px)", fontsize=9, color="white")
-    ax.set_ylabel("Altura", fontsize=9, color="white")
+    ax.set_ylabel("Altura (m)", fontsize=9, color="white")
     ax.set_title("Vista Lateral (Elevación) — Flujo de Aire", fontsize=11, color="white", pad=10)
 
     ax.set_xlim(0, sim_w)
@@ -276,9 +288,72 @@ def render_side_view_figure(
         spine.set_color("white")
         spine.set_linewidth(0.5)
 
-    cbar = plt.colorbar(im, ax=ax, shrink=0.85, pad=0.02)
-    cbar.set_label("Intensidad (azul = máx frío | rojo = ambiente)", fontsize=7, color="white")
-    cbar.ax.tick_params(colors="white", labelsize=7)
+    # ── Ceiling-height indicator (LEFT side) ─────────────────────────────────
+    # Vertical double-headed arrow at 4% from the left edge, label to its right.
+    arrow_x = sim_w * 0.04
+    ax.annotate(
+        "", xy=(arrow_x, sim_h), xytext=(arrow_x, 0),
+        arrowprops=dict(
+            arrowstyle="<->", color="white", lw=1.5,
+            shrinkA=0, shrinkB=0,
+        ),
+        zorder=10,
+    )
+    ax.text(
+        arrow_x + sim_w * 0.01, sim_h / 2,
+        f"Altura:\n{ceiling_height_m:.1f} m",
+        ha="left", va="center", fontsize=7, color="white", fontweight="bold",
+        bbox=dict(boxstyle="round,pad=0.25", facecolor="#1a1a2e", alpha=0.75),
+        zorder=11,
+    )
+
+    # ── Dynamic colorbar — identical to the top-view (Vista Superior) ─────────
+    # 0 (red) = Temp. Ambiente, 100 (blue) = Sensación térmica calculada
+    # Temperature labels appear on BOTH sides of the colour strip.
+    cbar = plt.colorbar(im, ax=ax, shrink=0.8, pad=0.02)
+    if thermal_change < ambient_temp:
+        # Five evenly-spaced ticks mapped to real temperatures
+        cbar_ticks = [0, 25, 50, 75, 100]
+        cbar_labels = [
+            f"{ambient_temp - t / 100.0 * (ambient_temp - thermal_change):.1f} °C"
+            for t in cbar_ticks
+        ]
+        cbar.set_ticks(cbar_ticks)
+        cbar.set_ticklabels(cbar_labels)
+        # Labels on the RIGHT side only, in black for legibility
+        cbar.ax.yaxis.set_ticks_position("right")
+        cbar.ax.tick_params(
+            which="both",
+            left=False, right=True,
+            labelleft=False, labelright=True,
+            colors="black", labelsize=7,
+        )
+        cbar.set_label(
+            f"Temperatura  ▼ {ambient_temp}°C (ambiente) → {thermal_change}°C (sens. térmica) ▲",
+            fontsize=7, color="white",
+        )
+    else:
+        # Edge case: sensation temp ≥ ambient — no effective cooling gradient
+        cbar.ax.tick_params(colors="white", labelsize=7)
+        cbar.set_label(
+            "Sensación térmica ≥ Temp. Ambiente — sin diferencia de enfriamiento",
+            fontsize=7, color="orange",
+        )
+
+    # Contextual annotations: ambient temp, date/time, thermal sensation
+    from datetime import date as _date, time as _time
+    fecha_str = sim_date.strftime("%Y-%m-%d") if sim_date is not None else _date.today().strftime("%Y-%m-%d")
+    hora_str = sim_time.strftime("%H:%M") if sim_time is not None else _time(0, 0).strftime("%H:%M")
+    annotation_text = (
+        f"Temp. Ambiente: {ambient_temp} °C    "
+        f"Fecha: {fecha_str} | Hora: {hora_str}    "
+        f"Sensación térmica: {thermal_change} °C a {air_speed}"
+    )
+    fig.text(
+        0.5, 0.01, annotation_text,
+        ha="center", va="bottom", fontsize=7, color="white",
+        bbox=dict(boxstyle="round,pad=0.3", facecolor="#1a1a2e", alpha=0.75),
+    )
 
     plt.tight_layout()
     return fig

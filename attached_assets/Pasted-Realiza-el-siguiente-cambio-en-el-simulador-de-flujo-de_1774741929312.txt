@@ -1,0 +1,74 @@
+Realiza el siguiente cambio en el simulador de flujo de aire, manteniendo toda la funcionalidad existente (autenticación, roles, canvas, vista superior, vista lateral, tabla de sensación térmica, exportación, etc.).
+
+## 1. Sustituir la escala fija (0-100) por escala dinámica basada en Temp. Ambiente
+
+Actualmente, la barra lateral del mapa de calor muestra una escala fija de 0 a 100, donde:
+- 0 = Rojo (representa Temp. Ambiente)
+- 100 = Azul marino (representa máxima intensidad de flujo frío)
+
+Ahora, quiero que esta escala sea **dinámica** y muestre los valores reales de temperatura que el usuario ha configurado:
+
+- **Valor mínimo (color rojo)** = Temp. Ambiente ingresada por usuario (ej. 30°C)
+- **Valor máximo (color azul marino)** = Cambio de sensación térmica calculado (ej. 26.2°C)
+
+## 2. Nueva representación en la barra lateral (colorbar)
+
+En lugar de mostrar números del 0 al 100, la barra de color debe mostrar:
+- En el extremo inferior (rojo): "Temp. Ambiente: [valor] °C"
+- En el extremo superior (azul marino): "Sensación térmica: [valor] °C"
+- Entre ambos extremos, mostrar valores intermedios con degradado proporcional
+
+Ejemplo visual:
+┌─────────────────┐
+│ ↑ Azul Marino │ Sensación térmica: 26.2°C
+│ │
+│ Degradado │
+│ │
+│ ↓ Rojo │ Temp. Ambiente: 30°C
+└─────────────────┘
+
+text
+
+## 3. Mapeo de intensidad a temperatura
+
+- La simulación sigue calculando valores de intensidad (0 a 1 o 0 a 100 internamente)
+- Para la visualización en el mapa de calor y la barra de color:
+  - Intensidad máxima (100% de flujo) se mapea a Sensación térmica (color azul)
+  - Intensidad mínima (0% de flujo) se mapea a Temp. Ambiente (color rojo)
+  - Los valores intermedios se interpolan linealmente entre estos dos extremos
+
+Fórmula de mapeo:
+temperatura_mostrada = temp_ambiente - (intensidad_normalizada * (temp_ambiente - sensacion_termica))
+
+text
+Donde intensidad_normalizada va de 0 (mínimo flujo) a 1 (máximo flujo)
+
+## 4. Mostrar temperatura en el mapa de calor
+
+- Al pasar el cursor sobre el mapa de calor, mostrar el valor de temperatura real (no intensidad) en el tooltip o en un recuadro informativo
+- La leyenda del mapa de calor debe actualizarse para reflejar estos valores dinámicos
+
+## 5. Actualización en tiempo real
+
+- Cuando el usuario cambie "Temp. Ambiente" o seleccione una nueva velocidad (que afecta "Sensación térmica calculada"), la barra de color y el mapeo deben actualizarse automáticamente
+- El mapa de calor debe regenerarse si es necesario para reflejar la nueva escala visual
+
+## 6. Integración con la tabla de sensación térmica
+
+- Asegurar que la "Sensación térmica calculada" proviene de la tabla que ya implementamos
+- Si la temperatura calculada es mayor que la Temp. Ambiente (lo cual no debería ocurrir, pero por si acaso), invertir la lógica o mostrar advertencia
+
+## 7. Mantener el resto de funcionalidades
+
+- No alterar el cálculo físico del flujo de aire (decaimiento, multiplicador, línea de vista, etc.)
+- La exportación de CSV debe incluir tanto los valores de intensidad originales como los valores de temperatura mapeados
+- La exportación de PNG debe mostrar la nueva barra de color con los valores reales de temperatura
+
+## 8. Pruebas sugeridas
+
+- Configurar Temp. Ambiente = 35°C, velocidad 2 m/s → Sensación térmica calculada = 32.1°C (según tabla)
+- Verificar que la barra de color muestre rojo en 35°C y azul en 32.1°C
+- Generar mapa de calor y confirmar que las áreas con máxima intensidad (azul) muestran aprox 32.1°C al pasar el cursor
+- Exportar imagen y verificar que la barra de color muestre los valores correctos
+
+Implementa estos cambios con cuidado, añadiendo comentarios en el código. Asegura que la aplicación siga funcionando sin errores en Replit.

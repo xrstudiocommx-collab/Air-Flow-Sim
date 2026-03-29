@@ -1,0 +1,99 @@
+Reemplaza la escala fija 0–100 de la barra de color (colorbar) en el mapa de calor por una escala dinámica que muestre valores reales de temperatura, según los siguientes requisitos. Mantén toda la funcionalidad existente (autenticación, dibujo, simulación, exportación, etc.).
+
+## 1. Datos de temperatura a utilizar (tabla correcta extraída de la imagen)
+
+Utiliza exclusivamente la siguiente tabla de sensación térmica, que corresponde a las velocidades que el usuario puede seleccionar (1, 2 y 3 m/s) y temperaturas ambiente de 20 a 45 °C:
+
+### Velocidad 1.0 m/s
+| Temp. Ambiente (°C) | Sensación Térmica (°C) |
+|---------------------|------------------------|
+| 20 | 14.0 |
+| 21 | 15.0 |
+| 22 | 16.5 |
+| 23 | 18.0 |
+| 24 | 19.0 |
+| 25 | 20.9 |
+| 26 | 22.0 |
+| 27 | 23.0 |
+| 28 | 24.5 |
+| 29 | 25.5 |
+| 30 | 27.0 |
+| 31 | 28.0 |
+| 32 | 29.2 |
+| 33 | 30.7 |
+| 34 | 31.9 |
+| 35 | 34.0 |
+| 36 | 34.5 |
+| 37 | 36.9 |
+| 38 | 37.0 |
+| 39 | 39.3 |
+| 40 | 40.4 |
+| 41 | 41.4 |
+| 42 | 42.5 |
+| 43 | 43.6 |
+| 44 | 44.6 |
+| 45 | 45.7 |
+
+### Velocidad 2.0 m/s
+| Temp. Ambiente (°C) | Sensación Térmica (°C) |
+|---------------------|------------------------|
+| 20 | 10.0 |
+| 21 | 12.0 |
+| 22 | 13.2 |
+| 23 | 15.0 |
+| 24 | 16.3 |
+| 25 | 18.0 |
+| 26 | 19.3 |
+| 27 | 20.9 |
+| 28 | 22.2 |
+| 29 | 23.8 |
+| 30 | 25.2 |
+| 31 | 26.0 |
+| 32 | 27.8 |
+| 33 | 29.2 |
+| 34 | 31.0 |
+| 35 | 33.0 |
+| 36 | 34.5 |
+| 37 | 36.0 |
+| 38 | 37.0 |
+| 39 | 39.6 |
+| 40 | 40.7 |
+| 41 | 41.8 |
+| 42 | 43.0 |
+| 43 | 44.1 |
+| 44 | 45.3 |
+| 45 | 46.4 |
+
+### Velocidad 3.0 m/s
+| Temp. Ambiente (°C) | Sensación Térmica (°C) |
+|---------------------|------------------------|
+| 20 | 7.5 |
+| 21 | 9.0 |
+| 22 | 10.5 |
+| 23 | 12.8 |
+| 24 | 14.2 |
+| 25 | 16.0 |
+| 26 | 17.0 |
+| 27 | 19.0 |
+| 28 | 20.8 |
+| 29 | 22.2 |
+| 30 | 23.8 |
+| 31 | 25.5 |
+| 32 | 26.9 |
+| 33 | 28.4 |
+| 34 | 30.0 |
+| 35 | 32.0 |
+| 36 | 34.5 |
+| 37 | 35.0 |
+| 38 | 37.0 |
+| 39 | 39.8 |
+| 40 | 41.0 |
+| 41 | 42.3 |
+| 42 | 43.5 |
+| 43 | 44.7 |
+| 44 | 45.9 |
+| 45 | 47.1 |
+
+## 2. Mapeo de intensidad de flujo a temperatura
+- La simulación calcula internamente un valor de **intensidad normalizada** `I` en el rango [0, 1], donde 1 es la máxima intensidad de flujo (azul en el mapa de calor inverso) y 0 es ausencia total de flujo (rojo).
+- Ahora, en lugar de mostrar el valor `I` escalado a 0–100, la barra de color (colorbar) y los tooltips deben mostrar la **temperatura real** según la siguiente fórmula:
