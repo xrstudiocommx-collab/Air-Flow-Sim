@@ -775,7 +775,7 @@ def render():
 
     objects = canvas_result.json_data.get("objects", [])
 
-    if not is_polygon_mode:
+    if not is_polygon_mode and not is_flow_polygon_mode:
         fans_circ, fans_airfree, fans_oval, canvas_obstacles = parse_canvas_objects(objects)
         raw_fans = [
             obj for obj in objects
