@@ -103,22 +103,15 @@ def show_login():
     st.markdown(HIDE_SIDEBAR_CSS, unsafe_allow_html=True)
     apply_theme()
 
-    col_logo1, col_logo2, col_logo3 = st.columns([1, 1.5, 1])
-    with col_logo2:
-        st.image(_get_logo_path(), use_container_width=False, width=360)
-
-    st.markdown(
-        """
-        <div style="text-align: center; padding: 0.5rem 0 1.5rem 0;">
-            <h1 style="margin-bottom: 0.2rem;">Simulador de Flujo de Aire</h1>
-            <p style="opacity: 0.7; font-size: 1.1rem;">Sistema de simulacion de flujo de aire sobre planos arquitectonicos</p>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
     col1, col2, col3 = st.columns([1, 1.5, 1])
     with col2:
+        st.image(_get_logo_path(), width=220)
+        st.markdown(
+            "<h2 style='margin-top:0; margin-bottom:0;'>Simulador de Flujo de Aire</h2>"
+            "<p style='opacity:0.7; font-size:0.95rem; margin-bottom:1rem;'>Sistema de simulacion de flujo de aire sobre planos arquitectonicos</p>",
+            unsafe_allow_html=True,
+        )
+
         with st.form("login_form"):
             st.subheader("Iniciar Sesion")
             username = st.text_input("Usuario", placeholder="Ingresa tu usuario")
@@ -140,6 +133,20 @@ def show_login():
                     else:
                         st.error("Usuario o contrasena incorrectos.")
 
+        theme_options = ["Oscuro", "Claro"]
+        current_theme = st.session_state.get("app_theme", "Oscuro")
+        theme_idx = theme_options.index(current_theme) if current_theme in theme_options else 0
+        new_theme = st.selectbox(
+            "Tema",
+            theme_options,
+            index=theme_idx,
+            format_func=lambda x: "🌙 Dark" if x == "Oscuro" else "☀️ Light",
+            key="login_theme_select",
+        )
+        if new_theme != st.session_state.get("app_theme", "Oscuro"):
+            st.session_state["app_theme"] = new_theme
+            st.rerun()
+
 
 def show_app():
     apply_theme()
@@ -148,7 +155,7 @@ def show_app():
     role = get_current_role()
 
     with st.sidebar:
-        st.image(_get_logo_path(), use_container_width=False, width=200)
+        st.image(_get_logo_path(), width=160)
         st.markdown(f"### Bienvenido, {user['username']}")
         st.caption(f"Rol: {role}")
         st.divider()
