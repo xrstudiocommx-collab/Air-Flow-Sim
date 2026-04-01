@@ -1,4 +1,5 @@
 import streamlit as st
+import base64
 from utils.db import init_db
 from utils.auth import login_user, is_logged_in, get_current_user, get_current_role, logout
 
@@ -83,20 +84,48 @@ HIDE_SIDEBAR_CSS = """
 </style>
 """
 
-THEME_TOGGLE_CSS = """
+
+def _load_icon_base64(path):
+    with open(path, "rb") as f:
+        return base64.b64encode(f.read()).decode()
+
+
+_SOL_B64 = _load_icon_base64("static/icon_sol.png")
+_LUNA_B64 = _load_icon_base64("static/icon_luna.png")
+
+THEME_TOGGLE_FIXED_CSS = """
 <style>
-    .theme-toggle-btn button {
-        background: none !important;
+    div[data-testid="stMainBlockContainer"] > div > div:first-child .theme-toggle-fixed {{
+        position: fixed;
+        top: 8px;
+        right: 50px;
+        z-index: 999999;
+    }}
+    .theme-toggle-fixed button {{
+        background: transparent !important;
         border: none !important;
-        font-size: 1.6rem !important;
-        padding: 0.2rem 0.5rem !important;
-        cursor: pointer !important;
+        padding: 4px !important;
         min-height: 0 !important;
         line-height: 1 !important;
-    }
-    .theme-toggle-btn button:hover {
+        cursor: pointer !important;
+        box-shadow: none !important;
+    }}
+    .theme-toggle-fixed button:hover {{
         opacity: 0.7 !important;
-    }
+    }}
+    .theme-toggle-fixed button p {{
+        display: none !important;
+    }}
+    .theme-toggle-fixed button::before {{
+        content: "";
+        display: block;
+        width: 28px;
+        height: 28px;
+        background-image: url("data:image/png;base64,{icon_b64}");
+        background-size: contain;
+        background-repeat: no-repeat;
+        background-position: center;
+    }}
 </style>
 """
 
@@ -116,13 +145,16 @@ def _get_logo_path():
     return "static/kale_logo_original.png"
 
 
-def _render_theme_toggle(key_suffix=""):
-    st.markdown(THEME_TOGGLE_CSS, unsafe_allow_html=True)
+def _render_theme_toggle_fixed(key_suffix=""):
     current_theme = st.session_state.get("app_theme", "Oscuro")
-    icon = "☀️" if current_theme == "Oscuro" else "🌙"
+    icon_b64 = _SOL_B64 if current_theme == "Oscuro" else _LUNA_B64
+    st.markdown(
+        THEME_TOGGLE_FIXED_CSS.format(icon_b64=icon_b64),
+        unsafe_allow_html=True,
+    )
     with st.container():
-        st.markdown('<div class="theme-toggle-btn">', unsafe_allow_html=True)
-        if st.button(icon, key=f"theme_toggle_{key_suffix}", help="Cambiar tema"):
+        st.markdown('<div class="theme-toggle-fixed">', unsafe_allow_html=True)
+        if st.button(" ", key=f"theme_toggle_{key_suffix}"):
             st.session_state["app_theme"] = "Claro" if current_theme == "Oscuro" else "Oscuro"
             st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
@@ -131,10 +163,7 @@ def _render_theme_toggle(key_suffix=""):
 def show_login():
     st.markdown(HIDE_SIDEBAR_CSS, unsafe_allow_html=True)
     apply_theme()
-
-    toggle_col, _ = st.columns([1, 11])
-    with toggle_col:
-        _render_theme_toggle("login")
+    _render_theme_toggle_fixed("login")
 
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
@@ -169,6 +198,7 @@ def show_login():
 
 def show_app():
     apply_theme()
+    _render_theme_toggle_fixed("app")
 
     user = get_current_user()
     role = get_current_role()
@@ -197,8 +227,6 @@ def show_app():
             label_visibility="collapsed",
         )
 
-        st.divider()
-        _render_theme_toggle("sidebar")
         st.divider()
 
     if selection == "Simulador":
