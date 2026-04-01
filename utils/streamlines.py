@@ -327,6 +327,7 @@ def compute_streamlines(fans_circ, fans_airfree, fans_oval, obstacles,
 def render_streamlines_figure(bg_image, all_streamlines, fan_origins, sim_w, sim_h,
                               img_width, img_height, obstacles, scaled_obstacles,
                               flow_limits=None, streamlines_opacity=0.7,
+                              streamlines_decay=0.10,
                               fig_bg="#1E1E2E", fig_fg="#E0E0E0"):
     """
     Render the streamlines overlay figure.
@@ -338,6 +339,9 @@ def render_streamlines_figure(bg_image, all_streamlines, fan_origins, sim_w, sim
         semi-transparent purple zones on the figure.
     streamlines_opacity : float
         Global opacity (0–1) applied to all streamline segments.
+    streamlines_decay : float
+        Exponential decay rate for streamline intensity (affects colour fade).
+        Lower values → lines stay visible longer; higher → fade quickly.
     """
     fig, ax = plt.subplots(figsize=(10, img_height / img_width * 10))
     ax.imshow(bg_image, extent=[0, sim_w, sim_h, 0], aspect="auto", alpha=0.5)
@@ -379,36 +383,36 @@ def render_streamlines_figure(bg_image, all_streamlines, fan_origins, sim_w, sim
                     bbox=dict(boxstyle="round,pad=0.2", facecolor="#6C3483", alpha=0.75),
                     zorder=3)
 
-    # ── Streamline segments coloured by position along the line ───────────────
+    # ── Streamline segments: navy blue (#000080) → green (#00FF00) → transparent
     segments = []
     colors = []
     for streamline in all_streamlines:
         n = len(streamline)
         for j in range(n - 1):
             segments.append([streamline[j], streamline[j + 1]])
-            t = j / max(n - 1, 1)   # 0 = near fan, 1 = far away
+            t = j / max(n - 1, 1)
+            intensity = math.exp(-streamlines_decay * j)
             r_c = 0.0
-            g_c = 0.8 * (1 - t * 0.5)
-            b_c = 0.4 + 0.6 * t
-            # Respect the user-chosen global opacity
-            a_c = 0.7 * (1 - t * 0.4) * streamlines_opacity
+            g_c = t * 0.5 * intensity
+            b_c = (0.5 - t * 0.35) * intensity
+            a_c = intensity * 0.65 * streamlines_opacity
             colors.append((r_c, g_c, b_c, a_c))
 
     if segments:
         lc = LineCollection(segments, colors=colors, linewidths=0.8, zorder=4)
         ax.add_collection(lc)
 
-    # ── Fan origin markers ────────────────────────────────────────────────────
+    # ── Fan origin markers (navy blue) ──────────────────────────────────────
     for origin in fan_origins:
         if origin["type"] == "circ":
             circ = Circle((origin["x"], origin["y"]), origin["r"],
-                          facecolor="#00FF00", edgecolor=fig_fg, lw=1.5,
+                          facecolor="#000080", edgecolor=fig_fg, lw=1.5,
                           alpha=0.85, zorder=5)
             ax.add_patch(circ)
         else:
             hw, hh = origin["hw"], origin["hh"]
             rect = Rectangle((origin["x"] - hw, origin["y"] - hh), hw * 2, hh * 2,
-                              facecolor="#00FF00", edgecolor=fig_fg, lw=1.5,
+                              facecolor="#000080", edgecolor=fig_fg, lw=1.5,
                               alpha=0.85, zorder=5)
             ax.add_patch(rect)
 

@@ -560,8 +560,14 @@ def render():
                 min_value=0.1, max_value=1.0, value=0.7, step=0.05,
                 help="Transparencia de las líneas de corriente superpuestas",
             )
+            streamlines_decay = st.slider(
+                "Decaimiento líneas de corriente",
+                min_value=0.01, max_value=0.50, value=0.10, step=0.01,
+                help="Controla el alcance de las líneas: valores bajos = líneas más largas, valores altos = líneas más cortas",
+            )
         else:
             streamlines_opacity = 0.7
+            streamlines_decay = 0.10
 
         st.divider()
         col_limpiar, col_cerrar = st.columns(2)
@@ -947,6 +953,8 @@ def render():
             fig_stream = render_streamlines_figure(
                 bg_image, stream_lines, fan_origins, stream_w, stream_h,
                 w, h, all_obstacles, stream_scaled_obs,
+                streamlines_opacity=streamlines_opacity,
+                streamlines_decay=streamlines_decay,
                 fig_bg=_fig_bg, fig_fg=_fig_fg,
             )
 

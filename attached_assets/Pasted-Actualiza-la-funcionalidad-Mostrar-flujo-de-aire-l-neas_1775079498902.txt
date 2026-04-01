@@ -1,0 +1,22 @@
+Actualiza la funcionalidad "Mostrar flujo de aire (líneas de corriente)" en el simulador con los siguientes cambios, sin alterar el resto de la aplicación (autenticación, mapas de calor, vista lateral, etc.):
+
+1. **Color de los círculos (abanicos de techo):**  
+   - Los círculos que representan los ventiladores de techo deben mostrarse en **azul marino** (código #000080 o similar) en el canvas, para destacarlos.
+
+2. **Transición de color en las líneas de corriente:**  
+   - Las líneas de corriente (streamlines) deben usar un degradado que vaya desde **azul marino** en el origen del flujo (cerca del ventilador) hasta **verde** (#00FF00 o similar) y finalmente **transparente** en los extremos más alejados.
+   - Implementa este efecto asignando un color a cada punto de la línea según su intensidad de flujo (o su distancia normalizada desde el ventilador). Por ejemplo, se puede mapear el valor de intensidad a un colormap personalizado: `blue (alta) -> green -> transparent (baja)`.
+
+3. **Control de alcance (tasa de decaimiento) para líneas de corriente:**  
+   - Añade un nuevo control deslizante (slider) en el sidebar, dentro de la sección de líneas de corriente, con la etiqueta: **"Decaimiento líneas de corriente"**.
+   - Rango sugerido: 0.01 a 0.5, valor por defecto 0.1.
+   - Este valor debe influir en la longitud de las líneas de corriente: un valor bajo (p. ej. 0.01) hará que las líneas se extiendan más, mientras que un valor alto (0.5) las acortará. Ajusta la función de decaimiento exponencial para que afecte la intensidad utilizada en el trazado de las líneas.
+
+4. **Tono más oscuro en las líneas:**  
+   - Las líneas de corriente deben tener un aspecto más oscuro que antes, manteniendo la transición de color descrita. Ajusta la paleta o el alpha para que no sean demasiado brillantes.
+
+5. **Mantener la funcionalidad existente:**  
+   - El checkbox "Mostrar líneas de corriente" y los demás parámetros (opacidad, etc.) deben seguir funcionando.
+   - La simulación física (mapa de calor) no debe verse afectada.
+
+Implementa estos cambios con cuidado, añadiendo comentarios donde sea necesario. Asegura que la aplicación se ejecute sin errores en Replit.

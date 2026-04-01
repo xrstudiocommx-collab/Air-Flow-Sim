@@ -45,7 +45,10 @@ outputs/                  # Generated images and CSV files
 - Resolution options: Baja (100x100), Media (200x200), Alta (400x400)
 - Airflow streamlines visualization (top-down flow lines):
   - Toggle via checkbox in sidebar
-  - Green fan origins with blue flow lines radiating outward
+  - Navy blue (#000080) fan origin markers on the streamlines figure
+  - Colour gradient: navy blue (near fan) → green → transparent (far away)
+  - Darker line appearance with exponential decay-based opacity
+  - "Decaimiento líneas de corriente" slider (0.01–0.50) controls line reach
   - Lines deflect around obstacles following same shadow/blocking logic
   - Velocity field computed from fan positions and obstacle geometry
   - Exportable as separate PNG
