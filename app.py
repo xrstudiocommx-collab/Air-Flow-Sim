@@ -92,14 +92,25 @@ def apply_theme():
         st.markdown(DARK_THEME_CSS, unsafe_allow_html=True)
 
 
+def _get_logo_path():
+    theme = st.session_state.get("app_theme", "Oscuro")
+    if theme == "Oscuro":
+        return "static/kale_logo_white.png"
+    return "static/kale_logo_original.png"
+
+
 def show_login():
     st.markdown(HIDE_SIDEBAR_CSS, unsafe_allow_html=True)
     apply_theme()
 
+    col_logo1, col_logo2, col_logo3 = st.columns([1, 1.5, 1])
+    with col_logo2:
+        st.image(_get_logo_path(), use_container_width=False, width=360)
+
     st.markdown(
         """
-        <div style="text-align: center; padding: 2rem 0;">
-            <h1>Simulador de Flujo de Aire</h1>
+        <div style="text-align: center; padding: 0.5rem 0 1.5rem 0;">
+            <h1 style="margin-bottom: 0.2rem;">Simulador de Flujo de Aire</h1>
             <p style="opacity: 0.7; font-size: 1.1rem;">Sistema de simulacion de flujo de aire sobre planos arquitectonicos</p>
         </div>
         """,
@@ -137,6 +148,7 @@ def show_app():
     role = get_current_role()
 
     with st.sidebar:
+        st.image(_get_logo_path(), use_container_width=False, width=200)
         st.markdown(f"### Bienvenido, {user['username']}")
         st.caption(f"Rol: {role}")
         st.divider()
