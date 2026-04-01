@@ -97,24 +97,23 @@ THEME_TOGGLE_FIXED_CSS = """
 <style>
     .theme-toggle-fixed {{
         position: fixed;
-        top: 6px;
-        right: 48px;
+        top: 4px;
+        right: 8px;
         z-index: 999999;
     }}
     .theme-toggle-fixed .stButton {{
-        width: 36px !important;
-        height: 36px !important;
+        width: 32px !important;
+        height: 32px !important;
     }}
     .theme-toggle-fixed button {{
         background: transparent !important;
         border: none !important;
         padding: 0 !important;
         margin: 0 !important;
-        min-height: 36px !important;
-        max-height: 36px !important;
-        width: 36px !important;
-        max-width: 36px !important;
-        line-height: 1 !important;
+        min-height: 32px !important;
+        max-height: 32px !important;
+        width: 32px !important;
+        max-width: 32px !important;
         cursor: pointer !important;
         box-shadow: none !important;
         overflow: visible !important;
@@ -126,9 +125,11 @@ THEME_TOGGLE_FIXED_CSS = """
         opacity: 0.7 !important;
         background: transparent !important;
     }}
+    .theme-toggle-fixed button:active,
     .theme-toggle-fixed button:focus {{
         box-shadow: none !important;
         outline: none !important;
+        background: transparent !important;
     }}
     .theme-toggle-fixed button p {{
         display: none !important;
@@ -136,10 +137,10 @@ THEME_TOGGLE_FIXED_CSS = """
     .theme-toggle-fixed button::before {{
         content: "";
         display: block;
-        width: 26px;
-        height: 26px;
-        min-width: 26px;
-        min-height: 26px;
+        width: 22px;
+        height: 22px;
+        min-width: 22px;
+        min-height: 22px;
         background-image: url("data:image/png;base64,{icon_b64}");
         background-size: contain;
         background-repeat: no-repeat;
