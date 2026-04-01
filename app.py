@@ -83,6 +83,23 @@ HIDE_SIDEBAR_CSS = """
 </style>
 """
 
+THEME_TOGGLE_CSS = """
+<style>
+    .theme-toggle-btn button {
+        background: none !important;
+        border: none !important;
+        font-size: 1.6rem !important;
+        padding: 0.2rem 0.5rem !important;
+        cursor: pointer !important;
+        min-height: 0 !important;
+        line-height: 1 !important;
+    }
+    .theme-toggle-btn button:hover {
+        opacity: 0.7 !important;
+    }
+</style>
+"""
+
 
 def apply_theme():
     theme = st.session_state.get("app_theme", "Oscuro")
@@ -99,16 +116,32 @@ def _get_logo_path():
     return "static/kale_logo_original.png"
 
 
+def _render_theme_toggle(key_suffix=""):
+    st.markdown(THEME_TOGGLE_CSS, unsafe_allow_html=True)
+    current_theme = st.session_state.get("app_theme", "Oscuro")
+    icon = "☀️" if current_theme == "Oscuro" else "🌙"
+    with st.container():
+        st.markdown('<div class="theme-toggle-btn">', unsafe_allow_html=True)
+        if st.button(icon, key=f"theme_toggle_{key_suffix}", help="Cambiar tema"):
+            st.session_state["app_theme"] = "Claro" if current_theme == "Oscuro" else "Oscuro"
+            st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
+
+
 def show_login():
     st.markdown(HIDE_SIDEBAR_CSS, unsafe_allow_html=True)
     apply_theme()
 
-    col1, col2, col3 = st.columns([1, 1.5, 1])
+    toggle_col, _ = st.columns([1, 11])
+    with toggle_col:
+        _render_theme_toggle("login")
+
+    col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
-        st.image(_get_logo_path(), width=220)
+        st.image(_get_logo_path(), width=380)
         st.markdown(
-            "<h2 style='margin-top:0; margin-bottom:0;'>Simulador de Flujo de Aire</h2>"
-            "<p style='opacity:0.7; font-size:0.95rem; margin-bottom:1rem;'>Sistema de simulacion de flujo de aire sobre planos arquitectonicos</p>",
+            "<p style='opacity:0.7; font-size:0.95rem; margin-top:0; margin-bottom:1rem;'>"
+            "Simulador de Flujo de Aire — Sistema de simulacion sobre planos arquitectonicos</p>",
             unsafe_allow_html=True,
         )
 
@@ -133,20 +166,6 @@ def show_login():
                     else:
                         st.error("Usuario o contrasena incorrectos.")
 
-        theme_options = ["Oscuro", "Claro"]
-        current_theme = st.session_state.get("app_theme", "Oscuro")
-        theme_idx = theme_options.index(current_theme) if current_theme in theme_options else 0
-        new_theme = st.selectbox(
-            "Tema",
-            theme_options,
-            index=theme_idx,
-            format_func=lambda x: "🌙 Dark" if x == "Oscuro" else "☀️ Light",
-            key="login_theme_select",
-        )
-        if new_theme != st.session_state.get("app_theme", "Oscuro"):
-            st.session_state["app_theme"] = new_theme
-            st.rerun()
-
 
 def show_app():
     apply_theme()
@@ -155,7 +174,7 @@ def show_app():
     role = get_current_role()
 
     with st.sidebar:
-        st.image(_get_logo_path(), width=160)
+        st.image(_get_logo_path(), width=180)
         st.markdown(f"### Bienvenido, {user['username']}")
         st.caption(f"Rol: {role}")
         st.divider()
@@ -179,21 +198,7 @@ def show_app():
         )
 
         st.divider()
-
-        theme_options = ["Oscuro", "Claro"]
-        current_theme = st.session_state.get("app_theme", "Oscuro")
-        theme_idx = theme_options.index(current_theme) if current_theme in theme_options else 0
-        new_theme = st.selectbox(
-            "Tema",
-            theme_options,
-            index=theme_idx,
-            format_func=lambda x: f"🌙 Dark" if x == "Oscuro" else f"☀️ Light",
-            key="theme_select",
-        )
-        if new_theme != st.session_state.get("app_theme", "Oscuro"):
-            st.session_state["app_theme"] = new_theme
-            st.rerun()
-
+        _render_theme_toggle("sidebar")
         st.divider()
 
     if selection == "Simulador":

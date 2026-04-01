@@ -1,0 +1,25 @@
+Realiza los siguientes cambios en la pantalla de inicio de sesión (login) del simulador, manteniendo toda la funcionalidad existente (autenticación, roles, etc.). La imagen del logo de Kale Fans ya debe estar disponible en el proyecto (por ejemplo, en la carpeta `assets/logo.png` o `static/logo.png`). Si no está, indícame dónde colocarla.
+
+## 1. Logo grande centrado en la pantalla de login
+- En la página donde se pide usuario y contraseña (normalmente en `app.py` o en una página de login), agrega el logo de Kale Fans.
+- El logo debe mostrarse con un tamaño grande, aproximadamente **4 veces más grande que el tamaño actual** (si ya hay algún logo pequeño). Si no hay logo, establece un ancho de unos 300-400 píxeles (o un 60-80% del ancho del formulario, con máximo 500px).
+- Centrado horizontalmente (usando `st.image` con `use_column_width=False` y CSS para centrar, o mediante columnas vacías).
+- Debajo del logo, mostrar los campos de usuario, contraseña y el botón "Entrar" como ya está.
+
+## 2. Selector de tema (dark/light) como icono en la parte superior izquierda
+- Reemplaza el actual selector de tema (probablemente un selectbox o radio en el sidebar) por un **icono de sol/luna** ubicado en la **esquina superior izquierda** de la pantalla (fuera del formulario de login).
+- El icono debe ser interactivo: al hacer clic en él, se debe cambiar entre modo oscuro y modo claro.
+- Usa un emoji o un icono de FontAwesome (si se ha cargado) o un simple botón con texto 🌙 / ☀️.
+- El icono debe ser visible tanto en la página de login como después de iniciar sesión (siempre en la misma posición). Puedes implementarlo mediante `st.markdown` con HTML/CSS y un botón que actualice `st.session_state["theme"]` y luego ejecute `st.rerun()`.
+- Asegura que el cambio de tema se aplique correctamente (usando la configuración de tema de Streamlit o mediante inyección CSS).
+
+## 3. Consideraciones de estilo
+- El logo debe verse bien tanto en modo oscuro como claro (usa una imagen PNG con fondo transparente).
+- El icono de tema debe estar posicionado con un margen pequeño (por ejemplo, `position: fixed; top: 10px; left: 10px;` dentro de un contenedor HTML).
+- Si usas un botón de Streamlit (`st.button`) para el icono, colócalo en la parte superior con ayuda de columnas vacías o `st.markdown` con CSS.
+
+## 4. Mantenimiento del resto
+- No alteres la lógica de autenticación, roles, ni las páginas después del login.
+- Asegura que el logo no interfiera con el flujo de login.
+
+Implementa estos cambios con cuidado, añadiendo comentarios en el código si es necesario. La aplicación debe seguir ejecutándose sin errores en Replit.
