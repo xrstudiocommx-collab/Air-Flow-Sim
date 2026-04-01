@@ -189,16 +189,22 @@ def render_side_view_figure(
     sim_time=None,
     thermal_change=22,
     air_speed="1 m/s",
+    fig_bg="#1E1E2E",
+    fig_fg="#E0E0E0",
 ):
     scale_x = sim_w / img_width
     floor_px = float(sim_h)
     pedestal_y_px = floor_px - (pedestal_height_m / ceiling_height_m) * sim_h
 
     fig, ax = plt.subplots(figsize=(10, 4))
+    _is_light = fig_bg.upper().startswith("#F")
+    _ax_bg = "#E8EAF0" if _is_light else "#2A2A3E"
+    _line_color = fig_fg
 
-    ax.set_facecolor("#2A2A3E")
+    fig.patch.set_facecolor(fig_bg)
+    ax.set_facecolor(_ax_bg)
 
-    ax.axhline(y=0, color="white", linewidth=2, linestyle="-")
+    ax.axhline(y=0, color=_line_color, linewidth=2, linestyle="-")
     ax.axhline(y=sim_h, color="#8B4513", linewidth=3, linestyle="-")
 
     ax.fill_between([0, sim_w], sim_h, sim_h + 10, color="#8B4513", alpha=0.5)
@@ -228,10 +234,10 @@ def render_side_view_figure(
 
         _draw_ceiling_fan_jet(ax, fx, 2 + r_draw * 2, sim_h, r_scaled)
 
-        circ = Circle((fx, 2 + r_draw), r_draw, color="#FF6600", ec="white", lw=1.5, zorder=8)
+        circ = Circle((fx, 2 + r_draw), r_draw, color="#FF6600", ec=fig_fg, lw=1.5, zorder=8)
         ax.add_patch(circ)
         ax.text(fx, -3, "Techo",
-                ha="center", va="bottom", fontsize=6, color="white", fontweight="bold",
+                ha="center", va="bottom", fontsize=6, color=fig_fg, fontweight="bold",
                 bbox=dict(boxstyle="round,pad=0.15", facecolor="#FF6600", alpha=0.8),
                 zorder=9)
 
@@ -248,10 +254,10 @@ def render_side_view_figure(
         _draw_pedestal_fan_jet(ax, fx, fy, dx_dir, sim_w, fan_hw_full)
 
         rect = Rectangle((fx - hw, fy - hh), hw * 2, hh * 2,
-                          color="#00AAFF", ec="white", lw=1.5, zorder=8)
+                          color="#00AAFF", ec=fig_fg, lw=1.5, zorder=8)
         ax.add_patch(rect)
         ax.text(fx, fy - hh - 4, "Pedestal",
-                ha="center", va="bottom", fontsize=6, color="white", fontweight="bold",
+                ha="center", va="bottom", fontsize=6, color=fig_fg, fontweight="bold",
                 bbox=dict(boxstyle="round,pad=0.15", facecolor="#00AAFF", alpha=0.8),
                 zorder=9)
 
@@ -262,30 +268,30 @@ def render_side_view_figure(
 
         _draw_ceiling_fan_jet(ax, fx, 2 + r_draw * 2, sim_h, r_scaled)
 
-        circ = Circle((fx, 2 + r_draw), r_draw, color="#FF6600", ec="white", lw=1.5, zorder=8)
+        circ = Circle((fx, 2 + r_draw), r_draw, color="#FF6600", ec=fig_fg, lw=1.5, zorder=8)
         ax.add_patch(circ)
 
     n_ticks = 6
     y_ticks_px = np.linspace(0, sim_h, n_ticks)
     y_labels_m = [f"{ceiling_height_m - (t / sim_h) * ceiling_height_m:.1f} m" for t in y_ticks_px]
     ax.set_yticks(y_ticks_px)
-    ax.set_yticklabels(y_labels_m, fontsize=8, color="white")
+    ax.set_yticklabels(y_labels_m, fontsize=8, color=fig_fg)
 
     n_xticks = 8
     x_ticks_px = np.linspace(0, sim_w, n_xticks)
     x_labels = [f"{int(t / scale_x)}" for t in x_ticks_px]
     ax.set_xticks(x_ticks_px)
-    ax.set_xticklabels(x_labels, fontsize=8, color="white")
+    ax.set_xticklabels(x_labels, fontsize=8, color=fig_fg)
 
-    ax.set_xlabel("Distancia X (px)", fontsize=9, color="white")
-    ax.set_ylabel("Altura (m)", fontsize=9, color="white")
-    ax.set_title("Vista Lateral (Elevación) — Flujo de Aire", fontsize=11, color="white", pad=10)
+    ax.set_xlabel("Distancia X (px)", fontsize=9, color=fig_fg)
+    ax.set_ylabel("Altura (m)", fontsize=9, color=fig_fg)
+    ax.set_title("Vista Lateral (Elevación) — Flujo de Aire", fontsize=11, color=fig_fg, pad=10)
 
     ax.set_xlim(0, sim_w)
     ax.set_ylim(sim_h + 5, -5)
-    ax.tick_params(colors="white")
+    ax.tick_params(colors=fig_fg)
     for spine in ax.spines.values():
-        spine.set_color("white")
+        spine.set_color(fig_fg)
         spine.set_linewidth(0.5)
 
     # ── Ceiling-height indicator (LEFT side) ─────────────────────────────────
@@ -294,16 +300,17 @@ def render_side_view_figure(
     ax.annotate(
         "", xy=(arrow_x, sim_h), xytext=(arrow_x, 0),
         arrowprops=dict(
-            arrowstyle="<->", color="white", lw=1.5,
+            arrowstyle="<->", color=fig_fg, lw=1.5,
             shrinkA=0, shrinkB=0,
         ),
         zorder=10,
     )
+    _badge_bg = "#1a1a2e" if not _is_light else "#FFFFFF"
     ax.text(
         arrow_x + sim_w * 0.01, sim_h / 2,
         f"Altura:\n{ceiling_height_m:.1f} m",
-        ha="left", va="center", fontsize=7, color="white", fontweight="bold",
-        bbox=dict(boxstyle="round,pad=0.25", facecolor="#1a1a2e", alpha=0.75),
+        ha="left", va="center", fontsize=7, color=fig_fg, fontweight="bold",
+        bbox=dict(boxstyle="round,pad=0.25", facecolor=_badge_bg, alpha=0.75),
         zorder=11,
     )
 
@@ -312,7 +319,6 @@ def render_side_view_figure(
     # Temperature labels appear on BOTH sides of the colour strip.
     cbar = plt.colorbar(im, ax=ax, shrink=0.8, pad=0.02)
     if thermal_change < ambient_temp:
-        # Five evenly-spaced ticks mapped to real temperatures
         cbar_ticks = [0, 25, 50, 75, 100]
         cbar_labels = [
             f"{ambient_temp - t / 100.0 * (ambient_temp - thermal_change):.1f} °C"
@@ -320,25 +326,24 @@ def render_side_view_figure(
         ]
         cbar.set_ticks(cbar_ticks)
         cbar.set_ticklabels(cbar_labels)
-        # Labels on the RIGHT side only, in black for legibility
         cbar.ax.yaxis.set_ticks_position("right")
         cbar.ax.tick_params(
             which="both",
             left=False, right=True,
             labelleft=False, labelright=True,
-            colors="black", labelsize=7,
+            colors=fig_fg, labelsize=7,
         )
         cbar.set_label(
             f"Temperatura  ▼ {ambient_temp}°C (ambiente) → {thermal_change}°C (sens. térmica) ▲",
-            fontsize=7, color="white",
+            fontsize=7, color=fig_fg,
         )
     else:
-        # Edge case: sensation temp ≥ ambient — no effective cooling gradient
-        cbar.ax.tick_params(colors="white", labelsize=7)
+        cbar.ax.tick_params(colors=fig_fg, labelsize=7)
         cbar.set_label(
             "Sensación térmica ≥ Temp. Ambiente — sin diferencia de enfriamiento",
             fontsize=7, color="orange",
         )
+    cbar.outline.set_edgecolor(fig_fg)
 
     # Contextual annotations: ambient temp, date/time, thermal sensation
     from datetime import date as _date, time as _time
@@ -351,8 +356,8 @@ def render_side_view_figure(
     )
     fig.text(
         0.5, 0.01, annotation_text,
-        ha="center", va="bottom", fontsize=7, color="white",
-        bbox=dict(boxstyle="round,pad=0.3", facecolor="#1a1a2e", alpha=0.75),
+        ha="center", va="bottom", fontsize=7, color=fig_fg,
+        bbox=dict(boxstyle="round,pad=0.3", facecolor=_badge_bg, alpha=0.75),
     )
 
     plt.tight_layout()

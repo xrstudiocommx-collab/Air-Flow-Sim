@@ -326,7 +326,8 @@ def compute_streamlines(fans_circ, fans_airfree, fans_oval, obstacles,
 
 def render_streamlines_figure(bg_image, all_streamlines, fan_origins, sim_w, sim_h,
                               img_width, img_height, obstacles, scaled_obstacles,
-                              flow_limits=None, streamlines_opacity=0.7):
+                              flow_limits=None, streamlines_opacity=0.7,
+                              fig_bg="#1E1E2E", fig_fg="#E0E0E0"):
     """
     Render the streamlines overlay figure.
 
@@ -374,7 +375,7 @@ def render_streamlines_figure(bg_image, all_streamlines, fan_origins, sim_w, sim
             cx = sum(p[0] * scale_x for p in raw_pts) / len(raw_pts)
             cy = sum(p[1] * scale_y for p in raw_pts) / len(raw_pts)
             ax.text(cx, cy, f"Zona {idx + 1}", ha="center", va="center",
-                    fontsize=7, color="white", fontweight="bold",
+                    fontsize=7, color=fig_fg, fontweight="bold",
                     bbox=dict(boxstyle="round,pad=0.2", facecolor="#6C3483", alpha=0.75),
                     zorder=3)
 
@@ -401,21 +402,21 @@ def render_streamlines_figure(bg_image, all_streamlines, fan_origins, sim_w, sim
     for origin in fan_origins:
         if origin["type"] == "circ":
             circ = Circle((origin["x"], origin["y"]), origin["r"],
-                          facecolor="#00FF00", edgecolor="white", lw=1.5,
+                          facecolor="#00FF00", edgecolor=fig_fg, lw=1.5,
                           alpha=0.85, zorder=5)
             ax.add_patch(circ)
         else:
             hw, hh = origin["hw"], origin["hh"]
             rect = Rectangle((origin["x"] - hw, origin["y"] - hh), hw * 2, hh * 2,
-                              facecolor="#00FF00", edgecolor="white", lw=1.5,
+                              facecolor="#00FF00", edgecolor=fig_fg, lw=1.5,
                               alpha=0.85, zorder=5)
             ax.add_patch(rect)
 
     ax.set_xlim(0, sim_w)
     ax.set_ylim(sim_h, 0)
     ax.axis("off")
-    ax.set_title("Flujo de Aire — Líneas de Corriente", fontsize=11, color="white", pad=10)
+    ax.set_title("Flujo de Aire — Líneas de Corriente", fontsize=11, color=fig_fg, pad=10)
 
-    fig.patch.set_facecolor("#1E1E2E")
+    fig.patch.set_facecolor(fig_bg)
     plt.tight_layout()
     return fig

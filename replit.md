@@ -60,5 +60,13 @@ outputs/                  # Generated images and CSV files
 ## Running
 Workflow: `streamlit run app.py --server.port 5000 --server.address 0.0.0.0`
 
+## Theming
+- Dark/Light toggle via CSS-injected button (top-right corner) using Sol/Luna icons
+- Theme state: `st.session_state["app_theme"]` — "Oscuro" (dark) or "Claro" (light)
+- Logos: KALE BLANCO (`static/kale_logo_white.png`) for Dark, KALE NEGRO (`static/kale_logo_original.png`) for Light
+- All matplotlib figures (heatmap, streamlines, side view) use `_fig_bg`/`_fig_fg` variables for theme-aware rendering
+- CSS themes: `DARK_THEME_CSS` and `LIGHT_THEME_CSS` in `app.py` with targeted selectors
+- Base Streamlit theme in `config.toml` is "dark"; Light mode overrides via injected CSS
+
 ## Note
 The streamlit-drawable-canvas library has a patched `__init__.py` to fix compatibility with newer Streamlit versions (base64 image encoding instead of removed `image_to_url`).

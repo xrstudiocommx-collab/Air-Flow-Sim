@@ -289,7 +289,7 @@ def _draw_fans_on_bg(bg_image, fans_airfree):
     return Image.alpha_composite(overlay, arrow_layer)
 
 
-def _draw_airfree_arrow_mpl(ax, fan):
+def _draw_airfree_arrow_mpl(ax, fan, fig_fg="#E0E0E0"):
     """Draw a direction arrow on the matplotlib heatmap for an AirFree fan."""
     cx, cy = fan["x"], fan["y"]
     hw = fan["half_w"]
@@ -302,7 +302,6 @@ def _draw_airfree_arrow_mpl(ax, fan):
     Dx = math.cos(flow_angle_rad)
     Dy = math.sin(flow_angle_rad)
 
-    # Arrow from back face to beyond front face
     back_x = cx - u_extent * Dx
     back_y = cy - u_extent * Dy
     tip_x = cx + (u_extent + min(hw, hh) * 0.8) * Dx
@@ -310,14 +309,13 @@ def _draw_airfree_arrow_mpl(ax, fan):
 
     ax.annotate(
         "", xy=(tip_x, tip_y), xytext=(back_x, back_y),
-        arrowprops=dict(arrowstyle="->", color="white", lw=2.5),
+        arrowprops=dict(arrowstyle="->", color=fig_fg, lw=2.5),
     )
 
-    # Label at the front face center
     label_x = cx + u_extent * Dx * 0.5
     label_y = cy + u_extent * Dy * 0.5
     ax.text(label_x, label_y, "AirFree",
-            ha="center", va="center", fontsize=7, color="white", fontweight="bold",
+            ha="center", va="center", fontsize=7, color=fig_fg, fontweight="bold",
             bbox=dict(boxstyle="round,pad=0.2", facecolor="#0055AA", alpha=0.75))
 
 
@@ -840,7 +838,11 @@ def render():
         )
         progress_bar.empty()
 
+        _theme = st.session_state.get("app_theme", "Oscuro")
+        _fig_bg = "#1E1E2E" if _theme == "Oscuro" else "#F5F7FA"
+        _fig_fg = "#E0E0E0" if _theme == "Oscuro" else "#1a1a2e"
         fig, ax = plt.subplots(figsize=(10, h / w * 10))
+        fig.patch.set_facecolor(_fig_bg)
         ax.imshow(bg_image)
 
         display_intensity = total_intensity.copy()
@@ -867,7 +869,7 @@ def render():
 
         # Direction arrows for each AirFree fan
         for fan in fans_airfree:
-            _draw_airfree_arrow_mpl(ax, fan)
+            _draw_airfree_arrow_mpl(ax, fan, fig_fg=_fig_fg)
 
         # Obstacle outlines
         for obs in all_obstacles:
@@ -883,7 +885,7 @@ def render():
                 cy_o = sum(p[1] for p in pts) / len(pts)
                 map_label = OBS_MAP_LABELS.get(size_label, size_label)
                 ax.text(cx_o, cy_o, map_label, ha="center", va="center",
-                        fontsize=8, fontweight="bold", color="white",
+                        fontsize=8, fontweight="bold", color=_fig_fg,
                         bbox=dict(boxstyle="round,pad=0.2",
                                   facecolor=color_map.get(size_label, "red"), alpha=0.7))
 
@@ -892,11 +894,11 @@ def render():
         arrow_len = max(w, h) * 0.045
         ox, oy = pad, pad
         ax.annotate("", xy=(ox + arrow_len, oy), xytext=(ox, oy),
-                    arrowprops=dict(arrowstyle="->", color="white", lw=1.5))
+                    arrowprops=dict(arrowstyle="->", color=_fig_fg, lw=1.5))
         ax.annotate("", xy=(ox, oy + arrow_len), xytext=(ox, oy),
-                    arrowprops=dict(arrowstyle="->", color="white", lw=1.5))
-        ax.text(ox + arrow_len + 3, oy, "X", color="white", fontsize=7, va="center", fontweight="bold")
-        ax.text(ox, oy + arrow_len + 3, "Y", color="white", fontsize=7, ha="center", fontweight="bold")
+                    arrowprops=dict(arrowstyle="->", color=_fig_fg, lw=1.5))
+        ax.text(ox + arrow_len + 3, oy, "X", color=_fig_fg, fontsize=7, va="center", fontweight="bold")
+        ax.text(ox, oy + arrow_len + 3, "Y", color=_fig_fg, fontsize=7, ha="center", fontweight="bold")
 
         # Contextual annotations: ambient temp, date/time, thermal sensation
         fecha_str = sim_date.strftime("%Y-%m-%d")
@@ -906,10 +908,11 @@ def render():
             f"Fecha: {fecha_str} | Hora: {hora_str}    "
             f"Sensación térmica: {thermal_change} °C a {air_speed}"
         )
+        _badge_bg = "#1a1a2e" if _theme == "Oscuro" else "#FFFFFF"
         fig.text(
             0.5, 0.01, annotation_text,
-            ha="center", va="bottom", fontsize=7, color="white",
-            bbox=dict(boxstyle="round,pad=0.3", facecolor="#1a1a2e", alpha=0.75),
+            ha="center", va="bottom", fontsize=7, color=_fig_fg,
+            bbox=dict(boxstyle="round,pad=0.3", facecolor=_badge_bg, alpha=0.75),
         )
 
         ax.axis("off")
@@ -918,7 +921,6 @@ def render():
         # 0 (red) = Temp. Ambiente, 100 (blue) = Sensación térmica calculada
         cbar = plt.colorbar(im, ax=ax, shrink=0.8)
         if thermal_change < ambient_temp:
-            # Normal case: cooling occurs, blue = cooler, red = warmer
             cbar_ticks = [0, 25, 50, 75, 100]
             cbar_labels = [
                 f"{ambient_temp - t / 100.0 * (ambient_temp - thermal_change):.1f} °C"
@@ -928,12 +930,12 @@ def render():
             cbar.set_ticklabels(cbar_labels)
             cbar.set_label(
                 f"Temperatura  ▼ {ambient_temp}°C (ambiente) → {thermal_change}°C (sens. térmica) ▲",
-                fontsize=7,
+                fontsize=7, color=_fig_fg,
             )
         else:
-            # Edge case: sensation >= ambient temp — show warning, keep raw scale
             cbar.set_label("Sensación térmica ≥ Temp. Ambiente — sin diferencia de enfriamiento", fontsize=7, color="orange")
-        cbar.ax.tick_params(labelsize=7)
+        cbar.ax.tick_params(labelsize=7, colors=_fig_fg)
+        cbar.outline.set_edgecolor(_fig_fg)
 
         # --- Streamlines ---
         fig_stream = None
@@ -945,6 +947,7 @@ def render():
             fig_stream = render_streamlines_figure(
                 bg_image, stream_lines, fan_origins, stream_w, stream_h,
                 w, h, all_obstacles, stream_scaled_obs,
+                fig_bg=_fig_bg, fig_fg=_fig_fg,
             )
 
         # --- Side view ---
@@ -965,6 +968,8 @@ def render():
                 sim_time=sim_time,
                 thermal_change=thermal_change,
                 air_speed=air_speed,
+                fig_bg=_fig_bg,
+                fig_fg=_fig_fg,
             )
 
         # Render results inside the anchored placeholder so they appear immediately

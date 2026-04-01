@@ -17,13 +17,27 @@ LIGHT_THEME_CSS = """
         background-color: #FFFFFF !important;
         border-right: 1px solid #E0E0E0 !important;
     }
-    [data-testid="stSidebar"] * {
+    [data-testid="stSidebar"] > div[data-testid="stSidebarContent"] h1,
+    [data-testid="stSidebar"] > div[data-testid="stSidebarContent"] h2,
+    [data-testid="stSidebar"] > div[data-testid="stSidebarContent"] h3,
+    [data-testid="stSidebar"] > div[data-testid="stSidebarContent"] h4,
+    [data-testid="stSidebar"] > div[data-testid="stSidebarContent"] p,
+    [data-testid="stSidebar"] > div[data-testid="stSidebarContent"] span,
+    [data-testid="stSidebar"] > div[data-testid="stSidebarContent"] label,
+    [data-testid="stSidebar"] .stMarkdown,
+    [data-testid="stSidebar"] .stCaption {
         color: #1a1a2e !important;
     }
     [data-testid="stHeader"] {
         background-color: #F5F7FA !important;
     }
-    .stMarkdown, .stText, p, span, label, h1, h2, h3, h4, h5, h6 {
+    [data-testid="stMainBlockContainer"] h1,
+    [data-testid="stMainBlockContainer"] h2,
+    [data-testid="stMainBlockContainer"] h3,
+    [data-testid="stMainBlockContainer"] h4,
+    [data-testid="stMainBlockContainer"] p,
+    [data-testid="stMainBlockContainer"] span,
+    [data-testid="stMainBlockContainer"] label {
         color: #1a1a2e !important;
     }
     [data-testid="stMetricValue"],
@@ -41,10 +55,19 @@ LIGHT_THEME_CSS = """
     .stButton > button {
         color: #1a1a2e !important;
         border-color: #CCC !important;
+        background-color: #FFFFFF !important;
+    }
+    .stButton > button:hover {
+        background-color: #F0F0F0 !important;
+        border-color: #AAA !important;
     }
     .stButton > button[kind="primary"] {
         color: white !important;
         background-color: #4FC3F7 !important;
+        border-color: #4FC3F7 !important;
+    }
+    .stButton > button[kind="primary"]:hover {
+        background-color: #3BAEE0 !important;
     }
     div[data-baseweb="select"] > div {
         background-color: #FFFFFF !important;
@@ -55,11 +78,32 @@ LIGHT_THEME_CSS = """
         background-color: #FFFFFF !important;
         color: #1a1a2e !important;
     }
+    div[data-baseweb="input"] input {
+        color: #1a1a2e !important;
+    }
     .stCaption, .stCaption * {
         color: #666 !important;
     }
     hr {
         border-color: #E0E0E0 !important;
+    }
+    .stSlider [data-baseweb="slider"] div[role="slider"] {
+        background-color: #4FC3F7 !important;
+    }
+    [data-testid="stAlert"] p,
+    [data-testid="stAlert"] span,
+    [data-testid="stNotification"] p,
+    [data-testid="stNotification"] span {
+        color: inherit !important;
+    }
+    [data-testid="stFileUploader"] label,
+    [data-testid="stFileUploader"] span,
+    [data-testid="stFileUploader"] p {
+        color: #1a1a2e !important;
+    }
+    [data-testid="stFileUploader"] section {
+        background-color: #FFFFFF !important;
+        border-color: #CCC !important;
     }
 </style>
 """
@@ -72,6 +116,52 @@ DARK_THEME_CSS = """
     }
     [data-testid="stSidebar"] {
         background-color: #2A2A3E !important;
+    }
+    [data-testid="stSidebar"] h1,
+    [data-testid="stSidebar"] h2,
+    [data-testid="stSidebar"] h3,
+    [data-testid="stSidebar"] p,
+    [data-testid="stSidebar"] span,
+    [data-testid="stSidebar"] label {
+        color: #E0E0E0 !important;
+    }
+    div[data-baseweb="select"] > div {
+        background-color: #2A2A3E !important;
+        color: #E0E0E0 !important;
+        border-color: #444 !important;
+    }
+    div[data-baseweb="input"] > div {
+        background-color: #2A2A3E !important;
+        color: #E0E0E0 !important;
+    }
+    div[data-baseweb="input"] input {
+        color: #E0E0E0 !important;
+    }
+    [data-testid="stForm"] {
+        background-color: #2A2A3E !important;
+        border: 1px solid #444 !important;
+    }
+    .stButton > button {
+        color: #E0E0E0 !important;
+        border-color: #555 !important;
+    }
+    .stButton > button:hover {
+        background-color: #3A3A4E !important;
+        border-color: #777 !important;
+    }
+    .stButton > button[kind="primary"] {
+        color: white !important;
+        background-color: #4FC3F7 !important;
+        border-color: #4FC3F7 !important;
+    }
+    [data-testid="stAlert"] p,
+    [data-testid="stAlert"] span,
+    [data-testid="stNotification"] p,
+    [data-testid="stNotification"] span {
+        color: inherit !important;
+    }
+    hr {
+        border-color: #444 !important;
     }
 </style>
 """
