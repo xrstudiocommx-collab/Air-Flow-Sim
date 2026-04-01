@@ -95,23 +95,40 @@ _LUNA_B64 = _load_icon_base64("static/icon_luna.png")
 
 THEME_TOGGLE_FIXED_CSS = """
 <style>
-    div[data-testid="stMainBlockContainer"] > div > div:first-child .theme-toggle-fixed {{
+    .theme-toggle-fixed {{
         position: fixed;
-        top: 8px;
-        right: 50px;
+        top: 6px;
+        right: 48px;
         z-index: 999999;
+    }}
+    .theme-toggle-fixed .stButton {{
+        width: 36px !important;
+        height: 36px !important;
     }}
     .theme-toggle-fixed button {{
         background: transparent !important;
         border: none !important;
-        padding: 4px !important;
-        min-height: 0 !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        min-height: 36px !important;
+        max-height: 36px !important;
+        width: 36px !important;
+        max-width: 36px !important;
         line-height: 1 !important;
         cursor: pointer !important;
         box-shadow: none !important;
+        overflow: visible !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
     }}
     .theme-toggle-fixed button:hover {{
         opacity: 0.7 !important;
+        background: transparent !important;
+    }}
+    .theme-toggle-fixed button:focus {{
+        box-shadow: none !important;
+        outline: none !important;
     }}
     .theme-toggle-fixed button p {{
         display: none !important;
@@ -119,8 +136,10 @@ THEME_TOGGLE_FIXED_CSS = """
     .theme-toggle-fixed button::before {{
         content: "";
         display: block;
-        width: 28px;
-        height: 28px;
+        width: 26px;
+        height: 26px;
+        min-width: 26px;
+        min-height: 26px;
         background-image: url("data:image/png;base64,{icon_b64}");
         background-size: contain;
         background-repeat: no-repeat;
