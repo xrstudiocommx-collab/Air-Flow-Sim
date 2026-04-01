@@ -62,6 +62,8 @@ def _compute_velocity_field(fans_circ, fans_airfree, fans_oval, grid_x, grid_y,
     h, w = grid_x.shape
     vx = np.zeros((h, w), dtype=np.float32)
     vy = np.zeros((h, w), dtype=np.float32)
+    fan_influence_count = np.zeros((h, w), dtype=np.float32)
+    influence_threshold = multiplier * 0.08
 
     transmission_mask = build_transmission_mask(obstacles, h, w) if use_los else None
 
@@ -72,6 +74,7 @@ def _compute_velocity_field(fans_circ, fans_airfree, fans_oval, grid_x, grid_y,
                 fan["x"], fan["y"], h, w, transmission_mask, num_samples=64
             )
             intensity *= attenuation
+        fan_influence_count += (intensity > influence_threshold).astype(np.float32)
         fan_vx, fan_vy = _intensity_to_velocity_radial(intensity, grid_x, grid_y, fan["x"], fan["y"])
         vx += fan_vx
         vy += fan_vy
@@ -83,6 +86,7 @@ def _compute_velocity_field(fans_circ, fans_airfree, fans_oval, grid_x, grid_y,
                 fan["x"], fan["y"], h, w, transmission_mask, num_samples=64
             )
             intensity *= attenuation
+        fan_influence_count += (intensity > influence_threshold).astype(np.float32)
         flow_angle_rad = math.radians(fan.get("flow_angle", 0))
         fan_vx, fan_vy = _intensity_to_velocity_directional(intensity, flow_angle_rad)
         vx += fan_vx
@@ -95,6 +99,7 @@ def _compute_velocity_field(fans_circ, fans_airfree, fans_oval, grid_x, grid_y,
                 fan["x"], fan["y"], h, w, transmission_mask, num_samples=64
             )
             intensity *= attenuation
+        fan_influence_count += (intensity > influence_threshold).astype(np.float32)
         fan_vx, fan_vy = _intensity_to_velocity_radial(intensity, grid_x, grid_y, fan["x"], fan["y"])
         vx += fan_vx
         vy += fan_vy
@@ -129,7 +134,7 @@ def _compute_velocity_field(fans_circ, fans_airfree, fans_oval, grid_x, grid_y,
         vx[blocked] = 0
         vy[blocked] = 0
 
-    return vx, vy
+    return vx, vy, fan_influence_count
 
 
 def _apply_flow_limits_mask(vx, vy, flow_limits, sim_h, sim_w, scale_x, scale_y):
@@ -261,11 +266,10 @@ def compute_streamlines(fans_circ, fans_airfree, fans_oval, obstacles,
                      "rx": f.get("rx", 20) * scale_x, "ry": f.get("ry", 20) * scale_y,
                      "angle": f.get("angle", 0)} for f in fans_oval]
 
-    vx, vy = _compute_velocity_field(scaled_circ, scaled_airfree, scaled_oval,
+    vx, vy, convergence_map = _compute_velocity_field(scaled_circ, scaled_airfree, scaled_oval,
                                       grid_x, grid_y, decay_rate, multiplier,
                                       scaled_obstacles, use_los, solid_mask)
 
-    # Apply flow-limit polygon attenuation to the combined velocity field
     vx, vy = _apply_flow_limits_mask(vx, vy, flow_limits or [], sim_h, sim_w, scale_x, scale_y)
 
     all_streamlines = []
@@ -321,13 +325,14 @@ def compute_streamlines(fans_circ, fans_airfree, fans_oval, obstacles,
                 if len(pts) > 3:
                     all_streamlines.append(pts)
 
-    return all_streamlines, fan_origins, sim_w, sim_h, solid_mask, scaled_obstacles
+    return all_streamlines, fan_origins, sim_w, sim_h, solid_mask, scaled_obstacles, convergence_map
 
 
 def render_streamlines_figure(bg_image, all_streamlines, fan_origins, sim_w, sim_h,
                               img_width, img_height, obstacles, scaled_obstacles,
                               flow_limits=None, streamlines_opacity=0.7,
                               streamlines_decay=0.10,
+                              convergence_map=None,
                               fig_bg="#1E1E2E", fig_fg="#E0E0E0"):
     """
     Render the streamlines overlay figure.
@@ -342,14 +347,16 @@ def render_streamlines_figure(bg_image, all_streamlines, fan_origins, sim_w, sim
     streamlines_decay : float
         Exponential decay rate for streamline intensity (affects colour fade).
         Lower values → lines stay visible longer; higher → fade quickly.
+    convergence_map : np.ndarray | None
+        2-D array (sim_h × sim_w) counting how many fans influence each pixel.
+        Segments in regions where convergence >= 2 are coloured navy blue.
     """
     fig, ax = plt.subplots(figsize=(10, img_height / img_width * 10))
-    ax.imshow(bg_image, extent=[0, sim_w, sim_h, 0], aspect="auto", alpha=0.5)
+    ax.imshow(bg_image, extent=[0, sim_w, sim_h, 0], aspect="auto", alpha=1.0)
 
     scale_x = sim_w / img_width
     scale_y = sim_h / img_height
 
-    # ── Obstacle outlines ──────────────────────────────────────────────────────
     for obs in obstacles:
         pts = obs["points"]
         if len(pts) >= 3:
@@ -362,8 +369,6 @@ def render_streamlines_figure(bg_image, all_streamlines, fan_origins, sim_w, sim
             ax.fill(scaled_pts_x, scaled_pts_y, color=color_map.get(size_label, "#FF0000"),
                     alpha=0.15)
 
-    # ── Flow-limit polygons ───────────────────────────────────────────────────
-    # Drawn beneath the streamlines so they don't obscure the lines.
     if flow_limits:
         for idx, poly_data in enumerate(flow_limits):
             raw_pts = poly_data.get("points", [])
@@ -371,11 +376,8 @@ def render_streamlines_figure(bg_image, all_streamlines, fan_origins, sim_w, sim
                 continue
             xs = [p[0] * scale_x for p in raw_pts] + [raw_pts[0][0] * scale_x]
             ys = [p[1] * scale_y for p in raw_pts] + [raw_pts[0][1] * scale_y]
-            # Filled zone in purple
             ax.fill(xs, ys, color="#9B59B6", alpha=0.18, zorder=2)
-            # Dashed boundary
             ax.plot(xs, ys, color="#9B59B6", linewidth=2, linestyle=":", alpha=0.9, zorder=2)
-            # Label at centroid
             cx = sum(p[0] * scale_x for p in raw_pts) / len(raw_pts)
             cy = sum(p[1] * scale_y for p in raw_pts) / len(raw_pts)
             ax.text(cx, cy, f"Zona {idx + 1}", ha="center", va="center",
@@ -383,37 +385,60 @@ def render_streamlines_figure(bg_image, all_streamlines, fan_origins, sim_w, sim
                     bbox=dict(boxstyle="round,pad=0.2", facecolor="#6C3483", alpha=0.75),
                     zorder=3)
 
-    # ── Streamline segments: navy blue (#000080) → green (#00FF00) → transparent
+    has_conv = convergence_map is not None
+    conv_h, conv_w = (convergence_map.shape if has_conv else (0, 0))
+
     segments = []
     colors = []
     for streamline in all_streamlines:
         n = len(streamline)
         for j in range(n - 1):
+            px, py = streamline[j]
             segments.append([streamline[j], streamline[j + 1]])
             t = j / max(n - 1, 1)
             intensity = math.exp(-streamlines_decay * j)
-            r_c = 0.0
-            g_c = t * 0.5 * intensity
-            b_c = (0.5 - t * 0.35) * intensity
-            a_c = intensity * 0.65 * streamlines_opacity
+
+            is_convergence = False
+            if has_conv:
+                ix = int(np.clip(px, 0, conv_w - 1))
+                iy = int(np.clip(py, 0, conv_h - 1))
+                is_convergence = convergence_map[iy, ix] >= 2
+
+            if is_convergence:
+                r_c = 0.0
+                g_c = 0.0
+                b_c = 0.50
+                a_c = 0.45 * intensity * streamlines_opacity
+                lw = 1.2
+            else:
+                r_c = 0.53 * (1 - t) * intensity
+                g_c = 0.81 * (1 - t * 0.3) * intensity
+                b_c = 0.92 * intensity
+                a_c = intensity * 0.60 * streamlines_opacity
+                lw = 0.8
+
             colors.append((r_c, g_c, b_c, a_c))
 
     if segments:
         lc = LineCollection(segments, colors=colors, linewidths=0.8, zorder=4)
         ax.add_collection(lc)
 
-    # ── Fan origin markers (navy blue) ──────────────────────────────────────
+    if has_conv and np.any(convergence_map >= 2):
+        conv_display = np.where(convergence_map >= 2, convergence_map, np.nan)
+        ax.imshow(conv_display, extent=[0, sim_w, sim_h, 0], aspect="auto",
+                  cmap="Blues", alpha=0.08, zorder=3, interpolation="bilinear")
+
     for origin in fan_origins:
         if origin["type"] == "circ":
             circ = Circle((origin["x"], origin["y"]), origin["r"],
-                          facecolor="#000080", edgecolor=fig_fg, lw=1.5,
-                          alpha=0.85, zorder=5)
+                          facecolor="#87CEEB", edgecolor=fig_fg, lw=1.5,
+                          alpha=0.30, zorder=5)
             ax.add_patch(circ)
         else:
             hw, hh = origin["hw"], origin["hh"]
             rect = Rectangle((origin["x"] - hw, origin["y"] - hh), hw * 2, hh * 2,
-                              facecolor="#000080", edgecolor=fig_fg, lw=1.5,
-                              alpha=0.85, zorder=5)
+                              facecolor="#87CEEB", edgecolor=fig_fg, lw=1.5,
+                              alpha=0.30, zorder=5)
             ax.add_patch(rect)
 
     ax.set_xlim(0, sim_w)

@@ -946,7 +946,7 @@ def render():
         # --- Streamlines ---
         fig_stream = None
         if show_streamlines:
-            stream_lines, fan_origins, stream_w, stream_h, stream_obs_mask, stream_scaled_obs = compute_streamlines(
+            stream_lines, fan_origins, stream_w, stream_h, stream_obs_mask, stream_scaled_obs, conv_map = compute_streamlines(
                 fans_circ, fans_airfree, fans_oval, sim_obstacles,
                 w, h, decay_rate, multiplier, resolution, use_los,
             )
@@ -955,6 +955,7 @@ def render():
                 w, h, all_obstacles, stream_scaled_obs,
                 streamlines_opacity=streamlines_opacity,
                 streamlines_decay=streamlines_decay,
+                convergence_map=conv_map,
                 fig_bg=_fig_bg, fig_fg=_fig_fg,
             )
 

@@ -45,9 +45,12 @@ outputs/                  # Generated images and CSV files
 - Resolution options: Baja (100x100), Media (200x200), Alta (400x400)
 - Airflow streamlines visualization (top-down flow lines):
   - Toggle via checkbox in sidebar
-  - Navy blue (#000080) fan origin markers on the streamlines figure
-  - Colour gradient: navy blue (near fan) → green → transparent (far away)
-  - Darker line appearance with exponential decay-based opacity
+  - Sky blue (#87CEEB) fan origin markers with 30% transparency
+  - Colour gradient: sky blue (near fan) → green → transparent (far away)
+  - Flow convergence detection: where 2+ fans overlap, lines turn navy blue (#000080)
+  - Convergence map computed per-pixel by counting fans with significant influence
+  - Subtle blue heatmap overlay highlights convergence zones
+  - Background floor plan rendered at full brightness (no dark overlay)
   - "Decaimiento líneas de corriente" slider (0.01–0.50) controls line reach
   - Lines deflect around obstacles following same shadow/blocking logic
   - Velocity field computed from fan positions and obstacle geometry
