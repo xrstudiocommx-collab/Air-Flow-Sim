@@ -485,7 +485,7 @@ def render():
                     f2["flow_angle"] = st.session_state["airfree_angles"].get(str(i), 0)
                     fans_with_angles.append(f2)
                 arrow_preview = _draw_fans_on_bg(_bg, fans_with_angles)
-                st.image(arrow_preview, caption="Vista previa dirección", use_container_width=True)
+                st.image(arrow_preview, caption="Vista previa dirección", width="stretch")
 
         st.divider()
         st.subheader("Parametros de Simulacion")
@@ -981,53 +981,78 @@ def render():
                 fig_fg=_fig_fg,
             )
 
-        # Render results inside the anchored placeholder so they appear immediately
+        buf_img = io.BytesIO()
+        fig.savefig(buf_img, format="png", bbox_inches="tight", pad_inches=0, dpi=150)
+        buf_img.seek(0)
+
+        buf_stream_bytes = None
+        if fig_stream is not None:
+            buf_stream = io.BytesIO()
+            fig_stream.savefig(buf_stream, format="png", bbox_inches="tight", pad_inches=0, dpi=150)
+            buf_stream.seek(0)
+            buf_stream_bytes = buf_stream.getvalue()
+
+        buf_side_bytes = None
+        if fig_side is not None:
+            buf_side = io.BytesIO()
+            fig_side.savefig(buf_side, format="png", bbox_inches="tight", pad_inches=0, dpi=150)
+            buf_side.seek(0)
+            buf_side_bytes = buf_side.getvalue()
+
+        intensity_clean = np.nan_to_num(total_intensity, nan=0.0)
+        ys, xs = np.mgrid[0:sim_h, 0:sim_w]
+        x_coords = (xs * (w / sim_w)).flatten()
+        y_coords = (ys * (h / sim_h)).flatten()
+        intensities = intensity_clean.flatten()
+        _csv_raw_max = float(np.max(intensity_clean)) if np.any(intensity_clean > 0) else 1.0
+        _csv_raw_max = max(_csv_raw_max, 0.01)
+        intensity_norm = intensities / _csv_raw_max
+        temp_delta = float(ambient_temp) - float(thermal_change)
+        temp_real = float(ambient_temp) - intensity_norm * temp_delta
+        df = pd.DataFrame({
+            "x": np.round(x_coords, 1),
+            "y": np.round(y_coords, 1),
+            "intensidad": np.round(intensities, 4),
+            "temperatura_real_C": np.round(temp_real, 2),
+        })
+        csv_data = df.to_csv(index=False)
+
+        st.session_state["sim_results"] = {
+            "buf_img": buf_img.getvalue(),
+            "buf_stream": buf_stream_bytes,
+            "buf_side": buf_side_bytes,
+            "csv_data": csv_data,
+        }
+
+        plt.close(fig)
+        if fig_stream is not None:
+            plt.close(fig_stream)
+        if fig_side is not None:
+            plt.close(fig_side)
+
+    sim_results = st.session_state.get("sim_results")
+    if sim_results is not None:
         with result_placeholder.container():
             st.subheader("Vista Superior — Mapa de Calor")
-            st.pyplot(fig)
+            st.image(sim_results["buf_img"], width="stretch")
 
-            if fig_stream is not None:
+            if sim_results["buf_stream"] is not None:
                 st.divider()
                 st.subheader("Flujo de Aire — Líneas de Corriente")
-                st.pyplot(fig_stream)
+                st.image(sim_results["buf_stream"], width="stretch")
 
-            if fig_side is not None:
+            if sim_results["buf_side"] is not None:
                 st.divider()
                 st.subheader("Vista Lateral (Elevación)")
-                st.pyplot(fig_side)
+                st.image(sim_results["buf_side"], width="stretch")
 
-            # --- Export ---
             st.divider()
             st.subheader("Exportar Resultados")
 
-            buf_img = io.BytesIO()
-            fig.savefig(buf_img, format="png", bbox_inches="tight", pad_inches=0, dpi=150)
-            buf_img.seek(0)
-
-            intensity_clean = np.nan_to_num(total_intensity, nan=0.0)
-            ys, xs = np.mgrid[0:sim_h, 0:sim_w]
-            x_coords = (xs * (w / sim_w)).flatten()
-            y_coords = (ys * (h / sim_h)).flatten()
-            intensities = intensity_clean.flatten()
-            # Map intensity to real temperature:
-            # intensity_norm = 0 → Temp. Ambiente (red), intensity_norm = 1 → Sensación térmica (blue)
-            _csv_raw_max = float(np.max(intensity_clean)) if np.any(intensity_clean > 0) else 1.0
-            _csv_raw_max = max(_csv_raw_max, 0.01)
-            intensity_norm = intensities / _csv_raw_max
-            temp_delta = float(ambient_temp) - float(thermal_change)
-            temp_real = float(ambient_temp) - intensity_norm * temp_delta
-            df = pd.DataFrame({
-                "x": np.round(x_coords, 1),
-                "y": np.round(y_coords, 1),
-                "intensidad": np.round(intensities, 4),
-                "temperatura_real_C": np.round(temp_real, 2),
-            })
-            csv_data = df.to_csv(index=False)
-
             export_options = ["Vista Superior"]
-            if fig_stream is not None:
+            if sim_results["buf_stream"] is not None:
                 export_options.append("Flujo de Aire")
-            if fig_side is not None:
+            if sim_results["buf_side"] is not None:
                 export_options.append("Vista Lateral")
 
             if len(export_options) > 1:
@@ -1041,19 +1066,14 @@ def render():
                 export_view = "Vista Superior"
 
             if export_view == "Vista Superior":
-                st.download_button("Descargar Imagen (PNG)", buf_img.getvalue(), "mapa_calor.png", "image/png")
+                st.download_button("Descargar Imagen (PNG)", sim_results["buf_img"], "mapa_calor.png", "image/png")
             elif export_view == "Flujo de Aire":
-                buf_stream = io.BytesIO()
-                fig_stream.savefig(buf_stream, format="png", bbox_inches="tight", pad_inches=0, dpi=150)
-                buf_stream.seek(0)
-                st.download_button("Descargar Flujo de Aire (PNG)", buf_stream.getvalue(), "flujo_aire.png", "image/png")
+                st.download_button("Descargar Flujo de Aire (PNG)", sim_results["buf_stream"], "flujo_aire.png", "image/png")
             elif export_view == "Vista Lateral":
-                buf_side = io.BytesIO()
-                fig_side.savefig(buf_side, format="png", bbox_inches="tight", pad_inches=0, dpi=150)
-                buf_side.seek(0)
-                st.download_button("Descargar Vista Lateral (PNG)", buf_side.getvalue(), "vista_lateral.png", "image/png")
+                st.download_button("Descargar Vista Lateral (PNG)", sim_results["buf_side"], "vista_lateral.png", "image/png")
 
-            # --- Save project ---
+            st.download_button("Descargar Datos (CSV)", sim_results["csv_data"], "datos_simulacion.csv", "text/csv")
+
             st.divider()
             st.subheader("Guardar como Proyecto")
             st.caption("La asignacion a cliente se gestiona desde la vista Proyectos.")
@@ -1071,9 +1091,9 @@ def render():
                 orig_path = f"outputs/{timestamp}_original.png"
 
                 with open(img_path, "wb") as f:
-                    f.write(buf_img.getvalue())
+                    f.write(sim_results["buf_img"])
                 with open(csv_path, "w") as f:
-                    f.write(csv_data)
+                    f.write(sim_results["csv_data"])
                 bg_image.save(orig_path)
 
                 proyecto_id = create_proyecto(
@@ -1085,9 +1105,3 @@ def render():
                     asignado_a=None,
                 )
                 st.success(f"Proyecto '{nombre_proy}' guardado exitosamente (ID: {proyecto_id}).")
-
-        plt.close(fig)
-        if fig_stream is not None:
-            plt.close(fig_stream)
-        if fig_side is not None:
-            plt.close(fig_side)

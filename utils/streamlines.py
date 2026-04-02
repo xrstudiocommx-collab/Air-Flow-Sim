@@ -5,7 +5,6 @@ import matplotlib.pyplot as plt
 import matplotlib
 matplotlib.use("Agg")
 from matplotlib.collections import LineCollection
-from matplotlib.patches import Circle, Rectangle
 from scipy.ndimage import distance_transform_edt
 
 from utils.simulation import (
@@ -192,11 +191,44 @@ def _apply_flow_limits_mask(vx, vy, flow_limits, sim_h, sim_w, scale_x, scale_y)
     return vx, vy
 
 
-def _trace_streamline(x0, y0, vx, vy, solid_mask, width, height, max_steps=300, dt=1.5):
+def _trace_streamline(x0, y0, vx, vy, solid_mask, width, height,
+                      max_steps=300, dt=1.5,
+                      fan_cx=None, fan_cy=None, kickstart_steps=6,
+                      kickstart_dx=None, kickstart_dy=None):
+    """Trace a single streamline through the velocity field.
+
+    Parameters
+    ----------
+    fan_cx, fan_cy : float | None
+        Centre of the originating fan.  When provided (and no explicit
+        kickstart direction is given), the first *kickstart_steps* segments
+        follow a purely radial direction away from the fan centre.
+    kickstart_dx, kickstart_dy : float | None
+        Explicit initial direction unit vector.  Overrides the radial
+        direction computed from fan_cx/fan_cy.  Useful for directional
+        fans (AirFree) whose initial flow is not radial.
+    kickstart_steps : int
+        Number of initial purely-radial/directional steps (default 6).
+    """
     points = [(x0, y0)]
     x, y = float(x0), float(y0)
 
-    for _ in range(max_steps):
+    # Pre-compute the initial unit vector for the kickstart phase
+    use_kickstart = False
+    rdx, rdy = 0.0, 0.0
+    if kickstart_dx is not None and kickstart_dy is not None:
+        rdx, rdy = kickstart_dx, kickstart_dy
+        use_kickstart = True
+    elif fan_cx is not None and fan_cy is not None:
+        rdx = x0 - fan_cx
+        rdy = y0 - fan_cy
+        rdist = math.sqrt(rdx * rdx + rdy * rdy)
+        if rdist > 0:
+            rdx /= rdist
+            rdy /= rdist
+            use_kickstart = True
+
+    for step in range(max_steps):
         ix = int(np.clip(x, 0, width - 1))
         iy = int(np.clip(y, 0, height - 1))
 
@@ -209,8 +241,22 @@ def _trace_streamline(x0, y0, vx, vy, solid_mask, width, height, max_steps=300, 
         if speed < 0.01:
             break
 
-        x += u / speed * dt
-        y += v / speed * dt
+        # During kickstart phase, blend from pure radial toward field direction
+        if use_kickstart and step < kickstart_steps:
+            blend = step / kickstart_steps
+            u_dir = u / speed
+            v_dir = v / speed
+            u_final = rdx * (1 - blend) + u_dir * blend
+            v_final = rdy * (1 - blend) + v_dir * blend
+            mag = math.sqrt(u_final * u_final + v_final * v_final)
+            if mag > 0:
+                u_final /= mag
+                v_final /= mag
+            x += u_final * dt
+            y += v_final * dt
+        else:
+            x += u / speed * dt
+            y += v / speed * dt
 
         if x < 0 or x >= width or y < 0 or y >= height:
             break
@@ -222,7 +268,7 @@ def _trace_streamline(x0, y0, vx, vy, solid_mask, width, height, max_steps=300, 
 
 def compute_streamlines(fans_circ, fans_airfree, fans_oval, obstacles,
                         img_width, img_height, decay_rate, multiplier,
-                        resolution, use_los, num_lines_per_fan=40,
+                        resolution, use_los, num_lines_per_fan=80,
                         flow_limits=None):
     """
     Compute streamline traces for all fan types.
@@ -234,8 +280,15 @@ def compute_streamlines(fans_circ, fans_airfree, fans_oval, obstacles,
         coordinates (in original image space) that define a closed polygon.
         Inside these polygons the flow is attenuated to zero at the boundary.
     """
-    res_map = {"Baja": (100, 100), "Media": (200, 200), "Alta": (400, 400)}
-    sim_w, sim_h = res_map.get(resolution, (200, 200))
+    # Compute simulation grid preserving image aspect ratio so circles stay round
+    base_res = {"Baja": 100, "Media": 200, "Alta": 400}.get(resolution, 200)
+    aspect = img_width / max(img_height, 1)
+    if aspect >= 1:
+        sim_w = base_res
+        sim_h = max(int(base_res / aspect), 1)
+    else:
+        sim_h = base_res
+        sim_w = max(int(base_res * aspect), 1)
 
     scale_x = sim_w / img_width
     scale_y = sim_h / img_height
@@ -255,15 +308,18 @@ def compute_streamlines(fans_circ, fans_airfree, fans_oval, obstacles,
     grid_x = xx.astype(np.float32)
     grid_y = yy.astype(np.float32)
 
+    # With aspect-preserving grid, scale_x ≈ scale_y; use average for radius
+    uniform_scale = (scale_x + scale_y) / 2.0
     scaled_circ = [{"x": f["x"] * scale_x, "y": f["y"] * scale_y,
-                     "r": f.get("r", 20) * max(scale_x, scale_y)} for f in fans_circ]
+                     "r": f.get("r", 20) * uniform_scale} for f in fans_circ]
     scaled_airfree = [{
         "x": f["x"] * scale_x, "y": f["y"] * scale_y,
         "half_w": f["half_w"] * scale_x, "half_h": f["half_h"] * scale_y,
         "flow_angle": f.get("flow_angle", 0), "angle": f.get("angle", 0),
     } for f in fans_airfree]
     scaled_oval = [{"x": f["x"] * scale_x, "y": f["y"] * scale_y,
-                     "rx": f.get("rx", 20) * scale_x, "ry": f.get("ry", 20) * scale_y,
+                     "rx": f.get("rx", 20) * scale_x,
+                     "ry": f.get("ry", 20) * scale_y,
                      "angle": f.get("angle", 0)} for f in fans_oval]
 
     vx, vy, convergence_map = _compute_velocity_field(scaled_circ, scaled_airfree, scaled_oval,
@@ -284,7 +340,8 @@ def compute_streamlines(fans_circ, fans_airfree, fans_oval, obstacles,
             sx = fx + start_r * math.cos(angle)
             sy = fy + start_r * math.sin(angle)
             if 0 <= sx < sim_w and 0 <= sy < sim_h:
-                pts = _trace_streamline(sx, sy, vx, vy, solid_mask, sim_w, sim_h)
+                pts = _trace_streamline(sx, sy, vx, vy, solid_mask, sim_w, sim_h,
+                                        fan_cx=fx, fan_cy=fy)
                 if len(pts) > 3:
                     all_streamlines.append(pts)
 
@@ -307,7 +364,9 @@ def compute_streamlines(fans_circ, fans_airfree, fans_oval, obstacles,
             sx = fx + Dx * 2 + Px * t * aperture
             sy = fy + Dy * 2 + Py * t * aperture
             if 0 <= sx < sim_w and 0 <= sy < sim_h:
-                pts = _trace_streamline(sx, sy, vx, vy, solid_mask, sim_w, sim_h)
+                pts = _trace_streamline(sx, sy, vx, vy, solid_mask, sim_w, sim_h,
+                                        fan_cx=fx, fan_cy=fy,
+                                        kickstart_dx=Dx, kickstart_dy=Dy)
                 if len(pts) > 3:
                     all_streamlines.append(pts)
 
@@ -321,7 +380,8 @@ def compute_streamlines(fans_circ, fans_airfree, fans_oval, obstacles,
             sx = fx + start_r * math.cos(angle)
             sy = fy + start_r * math.sin(angle)
             if 0 <= sx < sim_w and 0 <= sy < sim_h:
-                pts = _trace_streamline(sx, sy, vx, vy, solid_mask, sim_w, sim_h)
+                pts = _trace_streamline(sx, sy, vx, vy, solid_mask, sim_w, sim_h,
+                                        fan_cx=fx, fan_cy=fy)
                 if len(pts) > 3:
                     all_streamlines.append(pts)
 
@@ -336,6 +396,9 @@ def render_streamlines_figure(bg_image, all_streamlines, fan_origins, sim_w, sim
                               fig_bg="#1E1E2E", fig_fg="#E0E0E0"):
     """
     Render the streamlines overlay figure.
+
+    All rendering is done in image-pixel coordinates so that fan positions
+    match exactly where they were drawn on the canvas.
 
     Parameters
     ----------
@@ -352,21 +415,22 @@ def render_streamlines_figure(bg_image, all_streamlines, fan_origins, sim_w, sim
         Segments in regions where convergence >= 2 are coloured navy blue.
     """
     fig, ax = plt.subplots(figsize=(10, img_height / img_width * 10))
-    ax.imshow(bg_image, extent=[0, sim_w, sim_h, 0], aspect="auto", alpha=1.0)
+    ax.imshow(bg_image)
 
-    scale_x = sim_w / img_width
-    scale_y = sim_h / img_height
+    # Inverse scale: simulation coords → image-pixel coords
+    inv_sx = img_width / sim_w
+    inv_sy = img_height / sim_h
 
     for obs in obstacles:
         pts = obs["points"]
         if len(pts) >= 3:
-            scaled_pts_x = [p[0] * scale_x for p in pts] + [pts[0][0] * scale_x]
-            scaled_pts_y = [p[1] * scale_y for p in pts] + [pts[0][1] * scale_y]
+            obs_x = [p[0] for p in pts] + [pts[0][0]]
+            obs_y = [p[1] for p in pts] + [pts[0][1]]
             size_label = obs.get("size", "XL")
             color_map = {"Ch": "#00CC00", "M": "#FFAA00", "G": "#FF6600", "XL": "#FF0000"}
-            ax.plot(scaled_pts_x, scaled_pts_y, color=color_map.get(size_label, "#FF0000"),
+            ax.plot(obs_x, obs_y, color=color_map.get(size_label, "#FF0000"),
                     linewidth=2, linestyle="--", alpha=0.8)
-            ax.fill(scaled_pts_x, scaled_pts_y, color=color_map.get(size_label, "#FF0000"),
+            ax.fill(obs_x, obs_y, color=color_map.get(size_label, "#FF0000"),
                     alpha=0.15)
 
     if flow_limits:
@@ -374,12 +438,12 @@ def render_streamlines_figure(bg_image, all_streamlines, fan_origins, sim_w, sim
             raw_pts = poly_data.get("points", [])
             if len(raw_pts) < 3:
                 continue
-            xs = [p[0] * scale_x for p in raw_pts] + [raw_pts[0][0] * scale_x]
-            ys = [p[1] * scale_y for p in raw_pts] + [raw_pts[0][1] * scale_y]
+            xs = [p[0] for p in raw_pts] + [raw_pts[0][0]]
+            ys = [p[1] for p in raw_pts] + [raw_pts[0][1]]
             ax.fill(xs, ys, color="#9B59B6", alpha=0.18, zorder=2)
             ax.plot(xs, ys, color="#9B59B6", linewidth=2, linestyle=":", alpha=0.9, zorder=2)
-            cx = sum(p[0] * scale_x for p in raw_pts) / len(raw_pts)
-            cy = sum(p[1] * scale_y for p in raw_pts) / len(raw_pts)
+            cx = sum(p[0] for p in raw_pts) / len(raw_pts)
+            cy = sum(p[1] for p in raw_pts) / len(raw_pts)
             ax.text(cx, cy, f"Zona {idx + 1}", ha="center", va="center",
                     fontsize=7, color=fig_fg, fontweight="bold",
                     bbox=dict(boxstyle="round,pad=0.2", facecolor="#6C3483", alpha=0.75),
@@ -388,61 +452,59 @@ def render_streamlines_figure(bg_image, all_streamlines, fan_origins, sim_w, sim
     has_conv = convergence_map is not None
     conv_h, conv_w = (convergence_map.shape if has_conv else (0, 0))
 
+    # Color gradient: navy blue (near fan) → green (mid) → transparent (far)
     segments = []
     colors = []
+    linewidths = []
     for streamline in all_streamlines:
         n = len(streamline)
         for j in range(n - 1):
-            px, py = streamline[j]
-            segments.append([streamline[j], streamline[j + 1]])
+            sim_px, sim_py = streamline[j]
+            sim_px2, sim_py2 = streamline[j + 1]
+            # Convert segment endpoints from simulation to image-pixel coords
+            seg_start = (sim_px * inv_sx, sim_py * inv_sy)
+            seg_end = (sim_px2 * inv_sx, sim_py2 * inv_sy)
+            segments.append([seg_start, seg_end])
             t = j / max(n - 1, 1)
             intensity = math.exp(-streamlines_decay * j)
 
             is_convergence = False
+            conv_strength = 0
             if has_conv:
-                ix = int(np.clip(px, 0, conv_w - 1))
-                iy = int(np.clip(py, 0, conv_h - 1))
-                is_convergence = convergence_map[iy, ix] >= 2
+                ix = int(np.clip(sim_px, 0, conv_w - 1))
+                iy = int(np.clip(sim_py, 0, conv_h - 1))
+                conv_strength = convergence_map[iy, ix]
+                is_convergence = conv_strength >= 2
+
+            r_c = 0.0
+            g_c = 0.60 * t * intensity
+            b_c = 0.55 * (1.0 - t) * intensity
 
             if is_convergence:
+                boost = 1.0 + (conv_strength - 1) * 0.5
+                g_c = max(g_c / max(intensity, 1e-6), 0.15) * intensity * boost
+                b_c = max(b_c / max(intensity, 1e-6), 0.30) * intensity * boost
                 r_c = 0.0
-                g_c = 0.0
-                b_c = 0.50
-                a_c = 0.45 * intensity * streamlines_opacity
-                lw = 1.2
+                a_c = min(0.90, 0.65 * boost) * intensity * streamlines_opacity
+                lw = 1.4
             else:
-                r_c = 0.53 * (1 - t) * intensity
-                g_c = 0.81 * (1 - t * 0.3) * intensity
-                b_c = 0.92 * intensity
                 a_c = intensity * 0.60 * streamlines_opacity
                 lw = 0.8
 
             colors.append((r_c, g_c, b_c, a_c))
+            linewidths.append(lw)
 
     if segments:
-        lc = LineCollection(segments, colors=colors, linewidths=0.8, zorder=4)
+        lc = LineCollection(segments, colors=colors, linewidths=linewidths, zorder=4)
         ax.add_collection(lc)
 
     if has_conv and np.any(convergence_map >= 2):
         conv_display = np.where(convergence_map >= 2, convergence_map, np.nan)
-        ax.imshow(conv_display, extent=[0, sim_w, sim_h, 0], aspect="auto",
-                  cmap="Blues", alpha=0.08, zorder=3, interpolation="bilinear")
+        ax.imshow(conv_display, extent=[0, img_width, img_height, 0], aspect="auto",
+                  cmap="Blues", alpha=0.12, zorder=3, interpolation="bilinear")
 
-    for origin in fan_origins:
-        if origin["type"] == "circ":
-            circ = Circle((origin["x"], origin["y"]), origin["r"],
-                          facecolor="#87CEEB", edgecolor=fig_fg, lw=1.5,
-                          alpha=0.30, zorder=5)
-            ax.add_patch(circ)
-        else:
-            hw, hh = origin["hw"], origin["hh"]
-            rect = Rectangle((origin["x"] - hw, origin["y"] - hh), hw * 2, hh * 2,
-                              facecolor="#87CEEB", edgecolor=fig_fg, lw=1.5,
-                              alpha=0.30, zorder=5)
-            ax.add_patch(rect)
-
-    ax.set_xlim(0, sim_w)
-    ax.set_ylim(sim_h, 0)
+    ax.set_xlim(0, img_width)
+    ax.set_ylim(img_height, 0)
     ax.axis("off")
     ax.set_title("Flujo de Aire — Líneas de Corriente", fontsize=11, color=fig_fg, pad=10)
 
