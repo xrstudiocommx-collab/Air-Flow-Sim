@@ -1,0 +1,46 @@
+El canvas sigue parpadeando al dibujar dos círculos. La causa es un ciclo: el canvas guarda json_data en session_state, eso provoca rerun, el canvas se re-inicializa con initial_drawing, y se dispara otro rerun.
+
+Solución: NO guardes canvas_data en session_state después de cada interacción. Usa una variable de sesión para controlar cuándo se debe actualizar.
+
+## Pasos exactos en views/simulador.py:
+
+### 1. Elimina la línea que guarda canvas_data automáticamente.
+No hagas: `st.session_state["canvas_data"] = canvas_result.json_data` dentro del flujo normal.
+
+### 2. Solo guarda canvas_data cuando el usuario hace clic en un botón específico, por ejemplo "Guardar cambios en canvas".
+Agrega un botón en el sidebar: "Guardar posición de objetos".
+Al presionarlo, entonces sí guarda `st.session_state["canvas_data"] = canvas_result.json_data`.
+
+### 3. El canvas debe usar initial_drawing solo si existe canvas_data, pero NO actualices canvas_data en cada rerun.
+```python
+canvas_result = st_canvas(
+    ...,
+    initial_drawing=st.session_state.get("canvas_data"),
+    key="canvas_fixed",  # clave fija
+    ...
+)
+4. Para la simulación (mapa de calor, líneas de corriente):
+Usa los objetos desde canvas_result.json_data si está disponible (es el estado actual del canvas).
+
+Si no, usa st.session_state.get("canvas_data").
+
+Pero NUNCA guardes automáticamente.
+
+5. Para eliminar el parpadeo:
+Elimina cualquier st.rerun() que no sea explícitamente necesario.
+
+No llames a st.rerun() después de guardar canvas_data.
+
+6. Al hacer "Limpiar Todo":
+python
+if st.sidebar.button("Limpiar Todo"):
+    st.session_state.pop("canvas_data", None)
+    st.rerun()
+7. Verificación:
+Dibuja dos círculos. No deben parpadear.
+
+Ejecuta simulación. Los círculos deben permanecer.
+
+Si quieres que los objetos se mantengan después de cerrar la app, el usuario debe presionar "Guardar cambios en canvas".
+
+Implementa esto exactamente así. El error anterior era guardar automáticamente en cada rerun.

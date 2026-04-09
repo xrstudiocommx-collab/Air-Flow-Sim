@@ -1,0 +1,87 @@
+Necesito que implementes el selector de tema en la esquina superior derecha con iconos SVG, NO emojis. Sigue estos pasos exactos:
+
+## Paso 1: Ubicación del selector
+- El selector debe estar en la **esquina superior derecha** de la pantalla, usando `st.markdown` con CSS `position: fixed` para que flote sobre el contenido.
+- No debe estar dentro del sidebar ni del main content normal.
+
+## Paso 2: Código exacto a implementar
+
+Agrega este bloque de código al inicio de `app.py` (después de `st.set_page_config` pero antes de cualquier otro contenido):
+
+```python
+import streamlit as st
+import base64
+
+def get_sun_icon(color):
+    """SVG del sol en color especificado"""
+    return f'<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="5" stroke="{color}" stroke-width="2" fill="none"/><line x1="12" y1="1" x2="12" y2="3" stroke="{color}" stroke-width="2"/><line x1="12" y1="21" x2="12" y2="23" stroke="{color}" stroke-width="2"/><line x1="1" y1="12" x2="3" y2="12" stroke="{color}" stroke-width="2"/><line x1="21" y1="12" x2="23" y2="12" stroke="{color}" stroke-width="2"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64" stroke="{color}" stroke-width="2"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78" stroke="{color}" stroke-width="2"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36" stroke="{color}" stroke-width="2"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22" stroke="{color}" stroke-width="2"/></svg>'
+
+def get_moon_icon(color):
+    """SVG de la luna en color especificado"""
+    return f'<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" stroke="{color}" stroke-width="2" fill="none"/></svg>'
+
+# Inicializar tema
+if "theme" not in st.session_state:
+    st.session_state["theme"] = "dark"
+
+# CSS para posicionar el botón fijo en esquina superior derecha
+st.markdown(f"""
+<style>
+.theme-toggle {{
+    position: fixed;
+    top: 10px;
+    right: 50px;
+    z-index: 999;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 8px;
+    border-radius: 50%;
+    transition: background 0.3s;
+}}
+.theme-toggle:hover {{
+    background: rgba(128, 128, 128, 0.2);
+}}
+</style>
+""", unsafe_allow_html=True)
+
+# Determinar color del icono según tema
+icon_color = "#000000" if st.session_state["theme"] == "light" else "#FFFFFF"
+
+# Mostrar el botón con HTML
+icon_html = get_sun_icon(icon_color) if st.session_state["theme"] == "dark" else get_moon_icon(icon_color)
+
+theme_button = st.markdown(f'''
+<div style="position: fixed; top: 10px; right: 50px; z-index: 999;">
+    <button class="theme-toggle" onclick="document.getElementById('theme_hidden_btn').click()">
+        {icon_html}
+    </button>
+</div>
+''', unsafe_allow_html=True)
+
+# Botón oculto para capturar el clic
+if st.button("", key="theme_hidden_btn", help="Cambiar tema", use_container_width=False):
+    st.session_state["theme"] = "light" if st.session_state["theme"] == "dark" else "dark"
+    st.rerun()
+Paso 3: Asegurar que el botón no interfiera
+El botón debe tener z-index: 999 para estar por encima de otros elementos.
+
+Debe estar posicionado a la derecha (right: 50px) para no cubrir el botón de tres puntos de Streamlit.
+
+No debe moverse ni superponerse al hacer scroll.
+
+Paso 4: Limpiar código anterior
+Elimina cualquier selector de tema anterior que exista en el sidebar o en otro lugar.
+
+Asegura que no haya duplicación.
+
+Paso 5: Verificación
+En tema oscuro: icono de sol en color BLANCO.
+
+En tema claro: icono de luna en color NEGRO.
+
+Al hacer clic, el tema cambia y la página se recarga con el icono actualizado.
+
+El botón es visible en todas las páginas (login y app principal).
+
+Implementa esto exactamente como se indica. No uses emojis, solo los SVG proporcionados.

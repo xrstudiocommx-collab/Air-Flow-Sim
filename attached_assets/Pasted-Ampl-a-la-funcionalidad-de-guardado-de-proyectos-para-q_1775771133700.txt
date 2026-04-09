@@ -1,0 +1,61 @@
+Amplía la funcionalidad de guardado de proyectos para que almacene las tres vistas actuales: Vista Superior (Mapa de Calor), Flujo de Aire (Líneas de Corriente) y Vista Lateral (Elevación). Actualmente solo se guarda la Vista Superior.
+
+## 1. Modificar la base de datos (tabla `proyectos`)
+
+Agrega dos nuevas columnas para almacenar las rutas de las imágenes adicionales:
+
+```sql
+ALTER TABLE proyectos ADD COLUMN ruta_lineas_corriente TEXT;
+ALTER TABLE proyectos ADD COLUMN ruta_vista_lateral TEXT;
+Si ya existe la tabla, ejecuta estas sentencias en la inicialización (con PRAGMA table_info para verificar existencia).
+
+2. Generar y guardar las imágenes de las vistas adicionales
+En el flujo de simulación (cuando el usuario hace clic en "Generar Mapa de Calor" y si corresponde "Mostrar líneas de corriente" y "Mostrar vista lateral"):
+
+Para Flujo de Aire (líneas de corriente): después de dibujar las líneas sobre el canvas (o sobre el mapa de calor), guarda esa imagen combinada como proyecto_{id}_lineas.png.
+
+Para Vista Lateral: después de generar el gráfico de elevación (con el mapa de calor lateral y las líneas de corriente si están activas), guarda esa imagen como proyecto_{id}_lateral.png.
+
+Usa la misma carpeta outputs/proyectos/. Ejemplo:
+
+python
+ruta_lineas = f"outputs/proyectos/proyecto_{proyecto_id}_lineas.png"
+ruta_lateral = f"outputs/proyectos/proyecto_{proyecto_id}_lateral.png"
+3. Actualizar las funciones de base de datos
+Modifica guardar_resultados_proyecto (en utils/db.py) para que acepte parámetros opcionales para las nuevas rutas:
+
+python
+def guardar_resultados_proyecto(proyecto_id, ruta_imagen, ruta_csv, ruta_lineas=None, ruta_lateral=None):
+    # Actualiza las cuatro columnas
+Al guardar, llama a esta función con todas las rutas disponibles (si alguna vista no se generó, guardar como NULL).
+
+4. Integrar el guardado en el flujo actual
+Después de generar la Vista Superior, si el usuario tiene activado "Mostrar líneas de corriente", guarda esa imagen.
+
+Si tiene activada la Vista Lateral (checkbox "Mostrar vista lateral (elevación)"), guarda esa imagen al finalizar la simulación.
+
+Si el usuario guarda un proyecto manualmente (botón "Guardar Proyecto"), se deben guardar todas las vistas existentes en ese momento.
+
+5. Cargar proyectos con todas las vistas
+En la página de visualización de proyectos (para admin o cliente), al seleccionar un proyecto, muestra:
+
+La Vista Superior (si existe)
+
+La imagen de líneas de corriente (si existe)
+
+La vista lateral (si existe)
+
+Puedes usar pestañas (st.tabs) o columnas para mostrar las tres imágenes una al lado de la otra.
+
+6. Consideraciones
+No eliminar ni modificar la funcionalidad actual de guardado de Vista Superior.
+
+Asegurar que la exportación de CSV siga funcionando (el CSV es el mismo para todas las vistas).
+
+Los parámetros de simulación (Temp. Ambiente, velocidad, etc.) ya se guardan en la columna parametros, no es necesario duplicarlos.
+
+Agrega una confirmación (popup o diálogo) cuando el usuario intente eliminar un proyecto en la gestión de proyectos. Actualmente, al hacer clic en "Eliminar" se borra inmediatamente. Debe preguntar "¿Estás seguro de que quieres eliminar este proyecto? Esta acción no se puede deshacer." con opciones "Sí, eliminar" y "Cancelar".
+
+Implementa usando `st.warning` con botones o un diálogo modal con `st.popover` o `st.dialog` (según la versión de Streamlit). Asegura que la eliminación solo ocurra si el usuario confirma.
+
+Mantén el resto de la funcionalidad de gestión de proyectos intacta (listado, asignación, visualización).

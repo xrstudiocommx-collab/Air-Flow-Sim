@@ -1,0 +1,70 @@
+Necesito que implementes la persistencia de usuarios y archivos asignados en la base de datos SQLite existente. Sigue estos pasos exactamente:
+
+## 1. Estructura actual (verificar)
+Ya existe una base de datos `users.db` con una tabla `users` que tiene: id, username, password_hash, role, created_at.
+
+## 2. Modificar la tabla `proyectos` (si no existe, crearla)
+Ejecuta en la inicialización de la base de datos el siguiente SQL:
+
+```sql
+CREATE TABLE IF NOT EXISTS proyectos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nombre TEXT NOT NULL,
+    fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    usuario_id INTEGER,
+    asignado_a INTEGER,
+    ruta_imagen TEXT,
+    ruta_csv TEXT,
+    parametros TEXT,
+    FOREIGN KEY (usuario_id) REFERENCES users(id),
+    FOREIGN KEY (asignado_a) REFERENCES users(id)
+);
+3. Funciones a implementar en utils/db.py
+Agrega o modifica las siguientes funciones:
+
+python
+def crear_proyecto(nombre, usuario_id, parametros_json):
+    # Inserta un nuevo proyecto, devuelve id
+    # parametros_json es un string JSON con temp_ambiente, velocidad, etc.
+
+def guardar_resultados_proyecto(proyecto_id, ruta_imagen, ruta_csv):
+    # Actualiza las rutas de imagen y CSV para el proyecto
+
+def listar_proyectos_por_usuario(usuario_id, rol):
+    # Si es admin: devuelve proyectos donde usuario_id = usuario_id
+    # Si es cliente: devuelve proyectos donde asignado_a = usuario_id
+
+def asignar_proyecto_a_cliente(proyecto_id, cliente_id):
+    # Actualiza el campo asignado_a
+
+def obtener_proyecto(proyecto_id):
+    # Devuelve todos los campos
+4. Integración en la página de simulación (pages/simulador.py)
+Al hacer clic en "Generar Mapa de Calor", después de crear las imágenes y CSV, llamar a guardar_resultados_proyecto con el ID del proyecto activo.
+
+Antes de generar, si es un proyecto nuevo, usar crear_proyecto con los parámetros actuales (Temp. Ambiente, velocidad, etc.).
+
+5. Integración en la gestión de usuarios (pages/gestion_usuarios.py)
+Para el superadmin: mostrar lista de usuarios y permitir asignar proyectos a clientes.
+
+Para el administrador: mostrar lista de sus proyectos y un selector de clientes (solo usuarios con rol "cliente") para asignar.
+
+6. Página del cliente (pages/mis_planos.py)
+Mostrar solo los proyectos donde asignado_a == id del cliente logueado.
+
+Para cada proyecto, mostrar botones para ver el mapa (cargar imagen desde ruta_imagen) y descargar CSV.
+
+7. Almacenamiento de archivos
+Crear una carpeta outputs/proyectos/ si no existe.
+
+Al guardar una simulación, guardar la imagen como outputs/proyectos/proyecto_{id}_mapa.png y el CSV como outputs/proyectos/proyecto_{id}_datos.csv.
+
+Actualizar las rutas en la base de datos.
+
+8. Consideraciones
+No modificar la autenticación existente.
+
+Asegurar que las rutas sean relativas y funcionen en Replit.
+
+Los parámetros deben guardarse como JSON string (ej. {"temp_ambiente": 30, "velocidad": 2, "sensacion_termica": 27.1}).
+

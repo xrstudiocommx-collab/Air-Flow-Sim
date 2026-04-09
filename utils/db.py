@@ -35,12 +35,21 @@ def init_db():
             imagen_original TEXT,
             imagen_resultado TEXT,
             datos_csv TEXT,
+            parametros TEXT,
+            ruta_lineas_corriente TEXT,
+            ruta_vista_lateral TEXT,
             admin_id INTEGER NOT NULL,
             asignado_a INTEGER,
             FOREIGN KEY (admin_id) REFERENCES users(id),
             FOREIGN KEY (asignado_a) REFERENCES users(id)
         )
     """)
+
+    for col in ("parametros", "ruta_lineas_corriente", "ruta_vista_lateral"):
+        try:
+            cursor.execute(f"ALTER TABLE proyectos ADD COLUMN {col} TEXT")
+        except sqlite3.OperationalError:
+            pass
 
     cursor.execute("SELECT COUNT(*) FROM users WHERE role = 'superadmin'")
     if cursor.fetchone()[0] == 0:
@@ -124,13 +133,13 @@ def delete_user(user_id):
     conn.close()
 
 
-def create_proyecto(nombre, admin_id, imagen_original=None, imagen_resultado=None, datos_csv=None, asignado_a=None):
+def create_proyecto(nombre, admin_id, imagen_original=None, imagen_resultado=None, datos_csv=None, asignado_a=None, parametros_json=None):
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute(
-        """INSERT INTO proyectos (nombre, admin_id, imagen_original, imagen_resultado, datos_csv, asignado_a)
-           VALUES (?, ?, ?, ?, ?, ?)""",
-        (nombre, admin_id, imagen_original, imagen_resultado, datos_csv, asignado_a),
+        """INSERT INTO proyectos (nombre, admin_id, imagen_original, imagen_resultado, datos_csv, asignado_a, parametros)
+           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        (nombre, admin_id, imagen_original, imagen_resultado, datos_csv, asignado_a, parametros_json),
     )
     proyecto_id = cursor.lastrowid
     conn.commit()
@@ -138,11 +147,58 @@ def create_proyecto(nombre, admin_id, imagen_original=None, imagen_resultado=Non
     return proyecto_id
 
 
+def crear_proyecto(nombre, usuario_id, parametros_json):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        """INSERT INTO proyectos (nombre, admin_id, parametros)
+           VALUES (?, ?, ?)""",
+        (nombre, usuario_id, parametros_json),
+    )
+    proyecto_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return proyecto_id
+
+
+def guardar_resultados_proyecto(proyecto_id, ruta_imagen, ruta_csv, ruta_lineas=None, ruta_lateral=None):
+    conn = get_connection()
+    conn.execute(
+        """UPDATE proyectos
+           SET imagen_resultado = ?, datos_csv = ?, ruta_lineas_corriente = ?, ruta_vista_lateral = ?
+           WHERE id = ?""",
+        (ruta_imagen, ruta_csv, ruta_lineas, ruta_lateral, proyecto_id),
+    )
+    conn.commit()
+    conn.close()
+
+
 def update_proyecto(proyecto_id, **kwargs):
+    allowed = ("nombre", "imagen_original", "imagen_resultado", "datos_csv",
+               "asignado_a", "parametros", "ruta_lineas_corriente", "ruta_vista_lateral")
     conn = get_connection()
     for key, value in kwargs.items():
-        if key in ("nombre", "imagen_original", "imagen_resultado", "datos_csv", "asignado_a"):
+        if key in allowed:
             conn.execute(f"UPDATE proyectos SET {key} = ? WHERE id = ?", (value, proyecto_id))
+    conn.commit()
+    conn.close()
+
+
+def listar_proyectos_por_usuario(usuario_id, rol):
+    if rol in ("superadmin",):
+        return get_all_proyectos()
+    elif rol == "admin":
+        return get_proyectos_by_admin(usuario_id)
+    else:
+        return get_proyectos_by_cliente(usuario_id)
+
+
+def asignar_proyecto_a_cliente(proyecto_id, cliente_id):
+    conn = get_connection()
+    conn.execute(
+        "UPDATE proyectos SET asignado_a = ? WHERE id = ?",
+        (cliente_id, proyecto_id),
+    )
     conn.commit()
     conn.close()
 
@@ -207,8 +263,11 @@ def delete_proyecto(proyecto_id):
     conn = get_connection()
     proyecto = conn.execute("SELECT * FROM proyectos WHERE id = ?", (proyecto_id,)).fetchone()
     if proyecto:
-        for field in ("imagen_original", "imagen_resultado", "datos_csv"):
-            path = proyecto[field]
+        for field in ("imagen_original", "imagen_resultado", "datos_csv", "ruta_lineas_corriente", "ruta_vista_lateral"):
+            try:
+                path = proyecto[field]
+            except (IndexError, KeyError):
+                continue
             if path and os.path.exists(path):
                 os.remove(path)
     conn.execute("DELETE FROM proyectos WHERE id = ?", (proyecto_id,))

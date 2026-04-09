@@ -1,5 +1,4 @@
 import streamlit as st
-import base64
 from utils.db import init_db
 from utils.auth import login_user, is_logged_in, get_current_user, get_current_role, logout
 
@@ -105,6 +104,22 @@ LIGHT_THEME_CSS = """
         background-color: #FFFFFF !important;
         border-color: #CCC !important;
     }
+    div[data-testid="stFileUploader"] button {
+        color: #FFFFFF !important;
+        background-color: #000000 !important;
+    }
+    div[data-testid="stFileUploader"] button p,
+    div[data-testid="stFileUploader"] button span {
+        color: #FFFFFF !important;
+    }
+    div[data-testid="stForm"] button {
+        color: #FFFFFF !important;
+        background-color: #000000 !important;
+    }
+    div[data-testid="stForm"] button p,
+    div[data-testid="stForm"] button span {
+        color: #FFFFFF !important;
+    }
 </style>
 """
 
@@ -175,71 +190,6 @@ HIDE_SIDEBAR_CSS = """
 """
 
 
-def _load_icon_base64(path):
-    with open(path, "rb") as f:
-        return base64.b64encode(f.read()).decode()
-
-
-_SOL_B64 = _load_icon_base64("static/icon_sol.png")
-_LUNA_B64 = _load_icon_base64("static/icon_luna.png")
-
-THEME_TOGGLE_FIXED_CSS = """
-<style>
-    .theme-toggle-fixed {{
-        position: fixed;
-        top: 4px;
-        right: 8px;
-        z-index: 999999;
-    }}
-    .theme-toggle-fixed .stButton {{
-        width: 32px !important;
-        height: 32px !important;
-    }}
-    .theme-toggle-fixed button {{
-        background: transparent !important;
-        border: none !important;
-        padding: 0 !important;
-        margin: 0 !important;
-        min-height: 32px !important;
-        max-height: 32px !important;
-        width: 32px !important;
-        max-width: 32px !important;
-        cursor: pointer !important;
-        box-shadow: none !important;
-        overflow: visible !important;
-        display: flex !important;
-        align-items: center !important;
-        justify-content: center !important;
-    }}
-    .theme-toggle-fixed button:hover {{
-        opacity: 0.7 !important;
-        background: transparent !important;
-    }}
-    .theme-toggle-fixed button:active,
-    .theme-toggle-fixed button:focus {{
-        box-shadow: none !important;
-        outline: none !important;
-        background: transparent !important;
-    }}
-    .theme-toggle-fixed button p {{
-        display: none !important;
-    }}
-    .theme-toggle-fixed button::before {{
-        content: "";
-        display: block;
-        width: 22px;
-        height: 22px;
-        min-width: 22px;
-        min-height: 22px;
-        background-image: url("data:image/png;base64,{icon_b64}");
-        background-size: contain;
-        background-repeat: no-repeat;
-        background-position: center;
-    }}
-</style>
-"""
-
-
 def apply_theme():
     theme = st.session_state.get("app_theme", "Oscuro")
     if theme == "Claro":
@@ -255,25 +205,26 @@ def _get_logo_path():
     return "static/kale_logo_original.png"
 
 
-def _render_theme_toggle_fixed(key_suffix=""):
+def _render_theme_toggle(key_suffix=""):
     current_theme = st.session_state.get("app_theme", "Oscuro")
-    icon_b64 = _SOL_B64 if current_theme == "Oscuro" else _LUNA_B64
-    st.markdown(
-        THEME_TOGGLE_FIXED_CSS.format(icon_b64=icon_b64),
-        unsafe_allow_html=True,
-    )
-    with st.container():
-        st.markdown('<div class="theme-toggle-fixed">', unsafe_allow_html=True)
-        if st.button(" ", key=f"theme_toggle_{key_suffix}"):
+    if current_theme == "Oscuro":
+        icono = "☀️"
+        tooltip = "Cambiar a modo claro"
+    else:
+        icono = "🌙"
+        tooltip = "Cambiar a modo oscuro"
+
+    col1, col2, col3 = st.columns([8, 1, 1])
+    with col3:
+        if st.button(icono, key=f"theme_toggle_{key_suffix}", help=tooltip):
             st.session_state["app_theme"] = "Claro" if current_theme == "Oscuro" else "Oscuro"
             st.rerun()
-        st.markdown('</div>', unsafe_allow_html=True)
 
 
 def show_login():
     st.markdown(HIDE_SIDEBAR_CSS, unsafe_allow_html=True)
     apply_theme()
-    _render_theme_toggle_fixed("login")
+    _render_theme_toggle("login")
 
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
@@ -308,7 +259,7 @@ def show_login():
 
 def show_app():
     apply_theme()
-    _render_theme_toggle_fixed("app")
+    _render_theme_toggle("app")
 
     user = get_current_user()
     role = get_current_role()

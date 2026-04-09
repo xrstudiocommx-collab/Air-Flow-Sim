@@ -1,0 +1,60 @@
+Soluciona el problema por el cual los círculos que representan los ventiladores de techo cambian de posición (se mueven) cuando se ejecuta "Generar Mapa de Calor" o "Mostrar líneas de corriente".
+
+## 1. Identificación del problema
+- Los círculos se dibujan inicialmente en el canvas en una posición (left, top) y con un radio determinado.
+- Al ejecutar la simulación, se pierde la posición original o se reinterpretan las coordenadas, causando que los círculos aparezcan desplazados o con tamaño diferente.
+
+## 2. Causa probable
+- El código de simulación extrae los objetos del canvas desde `st.session_state["canvas_data"]` pero puede estar usando coordenadas relativas al contenedor en lugar de absolutas.
+- O bien, al regenerar el canvas después de la simulación, se redibujan los objetos con valores por defecto.
+
+## 3. Solución requerida
+
+### 3.1 Almacenar los objetos originales
+- Cuando el usuario dibuja un círculo (ventilador de techo), guarda sus propiedades originales en `st.session_state["objetos_fijos"]` o en una variable persistente que no se modifique durante la simulación.
+- Cada círculo debe guardar: `tipo="circulo"`, `left`, `top`, `radius` (o `width`/`height`), `stroke_width`, `stroke_color`, etc.
+
+### 3.2 Al generar la simulación
+- NO modificar las coordenadas de los objetos almacenados.
+- Para calcular el mapa de calor o las líneas de corriente, usar las coordenadas guardadas directamente, no las que pudieran haber cambiado en el canvas después de algún rerun.
+
+### 3.3 Al restaurar el canvas después de la simulación
+- Si el canvas se refresca (por ejemplo, al cambiar un parámetro o al hacer clic en "Generar"), volver a dibujar los objetos usando los valores almacenados en `st.session_state["objetos_fijos"]`.
+- Utilizar el parámetro `initial_drawing` del `st_canvas` para restaurar la escena exacta.
+
+### 3.4 Ejemplo de flujo de trabajo
+
+```python
+# Al cargar o dibujar un círculo
+if canvas_result.json_data:
+    objetos = canvas_result.json_data["objects"]
+    st.session_state["objetos_fijos"] = objetos
+
+# Al generar simulación
+objetos_a_usar = st.session_state.get("objetos_fijos", [])
+for obj in objetos_a_usar:
+    if obj["type"] == "circle":
+        centro_x = obj["left"] + obj["radius"]
+        centro_y = obj["top"] + obj["radius"]
+        radio = obj["radius"]
+        # usar estos valores para cálculos
+
+# Al redibujar el canvas después de la simulación
+canvas_result = st_canvas(
+    ...,
+    initial_drawing=st.session_state.get("objetos_fijos", []),
+    ...
+)
+4. Verificar también para óvalos (AirFree) y polígonos
+Asegurar que los rectángulos (abanicos de pedestal) y los polígonos (obstáculos) también mantengan su posición original.
+
+5. Prueba de validación
+Dibuja un círculo en una posición específica (ej. centro del plano).
+
+Ejecuta "Generar Mapa de Calor". El círculo debe permanecer en el mismo lugar (puedes verlo en el canvas después de la simulación, o al recargar la página).
+
+Ejecuta "Mostrar líneas de corriente". El círculo no debe moverse.
+
+Dibuja un segundo círculo cerca del primero. Ambos deben mantener sus posiciones.
+
+Implementa estos cambios con cuidado, revisando los archivos views/simulador.py y utils/canvas_utils.py si existen. Asegura que la aplicación siga funcionando sin errores.

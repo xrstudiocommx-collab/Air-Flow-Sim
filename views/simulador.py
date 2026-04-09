@@ -32,7 +32,8 @@ from utils.canvas_utils import parse_canvas_objects, SIZE_TRANSMISSION
 from utils.simulation import run_simulation
 from utils.side_view import run_side_view_simulation, render_side_view_figure
 from utils.streamlines import compute_streamlines, render_streamlines_figure
-from utils.db import create_proyecto
+import json
+from utils.db import crear_proyecto, guardar_resultados_proyecto
 from utils.auth import get_current_user
 
 # ---------------------------------------------------------------------------
@@ -110,83 +111,76 @@ OBS_MAP_LABELS = {
 
 
 def _init_state():
-    if "sim_canvas_key" not in st.session_state:
-        st.session_state["sim_canvas_key"] = "sim_canvas"
     if "saved_obstacles" not in st.session_state:
         st.session_state["saved_obstacles"] = []
     if "polygon_points_temp" not in st.session_state:
         st.session_state["polygon_points_temp"] = []
     if "airfree_angles" not in st.session_state:
         st.session_state["airfree_angles"] = {}
-    if "saved_fans_raw" not in st.session_state:
-        st.session_state["saved_fans_raw"] = []
-    if "_prev_canvas_key" not in st.session_state:
-        st.session_state["_prev_canvas_key"] = None
-    # Flow-limit polygons drawn by the user
     if "flow_limits" not in st.session_state:
         st.session_state["flow_limits"] = []
     if "flow_polygon_points_temp" not in st.session_state:
         st.session_state["flow_polygon_points_temp"] = []
+    if "poly_canvas_counter" not in st.session_state:
+        st.session_state["poly_canvas_counter"] = 0
 
 
-def _build_initial_drawing(w, h, saved_obstacles, saved_fans_raw=None):
-    objects = []
-    for obs in saved_obstacles:
+def _get_canvas_fan_objects():
+    return [
+        o for o in st.session_state.get("canvas_data", {}).get("objects", [])
+        if o.get("type", "") in ("circle", "rect", "ellipse")
+    ]
+
+
+def _draw_obstacles_on_bg(bg_image, saved_obstacles, flow_limits=None):
+    overlay = bg_image.copy().convert("RGBA")
+    draw_layer = Image.new("RGBA", overlay.size, (0, 0, 0, 0))
+    draw = ImageDraw.Draw(draw_layer)
+
+    color_map = {"Ch": "#00CC00", "M": "#FFAA00", "G": "#FF6600", "XL": "#FF0000"}
+    for obs in (saved_obstacles or []):
         pts = obs["points"]
-        if len(pts) < 3:
-            continue
-        min_x = min(p[0] for p in pts)
-        min_y = min(p[1] for p in pts)
-        fabric_pts = [{"x": p[0] - min_x, "y": p[1] - min_y} for p in pts]
-        size_label = obs.get("size", "XL")
-        color_map = {"Ch": "#00CC00", "M": "#FFAA00", "G": "#FF6600", "XL": "#FF0000"}
-        objects.append({
-            "type": "polygon",
-            "left": min_x,
-            "top": min_y,
-            "fill": "rgba(255,0,0,0.15)",
-            "stroke": color_map.get(size_label, "#FF0000"),
-            "strokeWidth": 2,
-            "points": fabric_pts,
-            "scaleX": 1,
-            "scaleY": 1,
-            "angle": 0,
-            "selectable": False,
-            "evented": False,
-        })
-    if saved_fans_raw:
-        for fan_obj in saved_fans_raw:
-            objects.append(fan_obj)
-    return {"version": "4.4.0", "objects": objects}
+        if len(pts) >= 3:
+            flat = [(int(p[0]), int(p[1])) for p in pts]
+            flat_closed = flat + [flat[0]]
+            color = color_map.get(obs.get("size", "XL"), "#FF0000")
+            draw.line(flat_closed, fill=color, width=2)
+
+    for poly_data in (flow_limits or []):
+        pts = poly_data.get("points", [])
+        if len(pts) >= 3:
+            flat = [(int(p[0]), int(p[1])) for p in pts]
+            flat_closed = flat + [flat[0]]
+            draw.line(flat_closed, fill="#9B59B6", width=2)
+
+    return Image.alpha_composite(overlay, draw_layer)
 
 
-def _draw_polygon_preview(bg_image, temp_points, saved_fans_raw=None,
+def _draw_polygon_preview(bg_image, temp_points, canvas_fan_objects=None,
                           saved_obstacles=None, flow_limits=None,
                           temp_flow_points=None, drawing_flow=False):
     overlay = bg_image.copy().convert("RGBA")
     draw_layer = Image.new("RGBA", overlay.size, (0, 0, 0, 0))
     draw = ImageDraw.Draw(draw_layer)
 
-    if saved_fans_raw:
-        for obj in saved_fans_raw:
+    if canvas_fan_objects:
+        for obj in canvas_fan_objects:
             obj_type = obj.get("type", "")
             left = obj.get("left", 0)
             top = obj.get("top", 0)
-            sx = obj.get("scaleX", 1)
-            sy = obj.get("scaleY", 1)
             if obj_type == "circle":
-                radius = obj.get("radius", 0)
-                cx = left + radius * sx
-                cy = top + radius * sy
-                r_draw = int(radius * max(sx, sy))
+                radius = obj.get("radius", obj.get("width", 0) / 2)
+                cx = left + radius
+                cy = top + radius
+                r_draw = int(radius)
                 draw.ellipse(
                     [int(cx - r_draw), int(cy - r_draw), int(cx + r_draw), int(cy + r_draw)],
                     outline="#FF6600", width=2,
                 )
                 draw.text((int(cx) - 6, int(cy) - 6), "T", fill="#FF6600")
             elif obj_type == "rect":
-                w_r = obj.get("width", 0) * sx
-                h_r = obj.get("height", 0) * sy
+                w_r = obj.get("width", 0)
+                h_r = obj.get("height", 0)
                 draw.rectangle(
                     [int(left), int(top), int(left + w_r), int(top + h_r)],
                     outline="#00AAFF", width=2,
@@ -380,13 +374,13 @@ def render():
                         "transmission": SIZE_TRANSMISSION[obs_size_temp],
                     })
                     st.session_state["polygon_points_temp"] = []
-                    st.session_state["sim_canvas_key"] = f"canvas_{np.random.randint(0, 1000000)}"
+                    st.session_state["poly_canvas_counter"] += 1
                     st.rerun()
             elif len(temp_pts) > 0:
                 st.info("Necesitas al menos 3 puntos para formar un obstaculo.")
             if st.button("Cancelar Poligono"):
                 st.session_state["polygon_points_temp"] = []
-                st.session_state["sim_canvas_key"] = f"canvas_{np.random.randint(0, 1000000)}"
+                st.session_state["poly_canvas_counter"] += 1
                 st.rerun()
 
         # ── Flow-limit polygon controls ────────────────────────────────────────
@@ -406,13 +400,13 @@ def render():
                         "points": list(fp_pts),
                     })
                     st.session_state["flow_polygon_points_temp"] = []
-                    st.session_state["sim_canvas_key"] = f"canvas_{np.random.randint(0, 1000000)}"
+                    st.session_state["poly_canvas_counter"] += 1
                     st.rerun()
             elif len(fp_pts) > 0:
                 st.info("Necesitas al menos 3 puntos para cerrar la zona.")
             if st.button("Cancelar polígono", key="cancel_flow_poly_sb"):
                 st.session_state["flow_polygon_points_temp"] = []
-                st.session_state["sim_canvas_key"] = f"canvas_{np.random.randint(0, 1000000)}"
+                st.session_state["poly_canvas_counter"] += 1
                 st.rerun()
 
         if len(st.session_state["saved_obstacles"]) > 0:
@@ -426,7 +420,6 @@ def render():
                 with row1_cols[1]:
                     if st.button("✕", key=f"del_obs_{i}"):
                         st.session_state["saved_obstacles"].pop(i)
-                        st.session_state["sim_canvas_key"] = f"canvas_{np.random.randint(0, 1000000)}"
                         st.rerun()
                 # Row 2: full-width type selector
                 new_size = st.selectbox(
@@ -453,7 +446,6 @@ def render():
                 with cols[1]:
                     if st.button("✕", key=f"del_flow_{i}"):
                         st.session_state["flow_limits"].pop(i)
-                        st.session_state["sim_canvas_key"] = f"canvas_{np.random.randint(0, 1000000)}"
                         st.rerun()
 
         # AirFree angle controls — shown in sidebar when fans are present on canvas
@@ -570,19 +562,22 @@ def render():
             streamlines_decay = 0.10
 
         st.divider()
+        save_disabled = is_polygon_mode or is_flow_polygon_mode
+        if st.button("💾 Guardar posición de objetos", use_container_width=True, disabled=save_disabled):
+            st.session_state["_save_canvas_requested"] = True
+
         col_limpiar, col_cerrar = st.columns(2)
         with col_limpiar:
             if st.button("Limpiar Todo", use_container_width=True):
-                st.session_state["sim_canvas_key"] = f"canvas_{np.random.randint(0, 1000000)}"
+                st.session_state.pop("canvas_data", None)
                 st.session_state["saved_obstacles"] = []
                 st.session_state["polygon_points_temp"] = []
                 st.session_state["airfree_angles"] = {}
                 st.session_state["airfree_sidebar_fans"] = []
-                st.session_state["saved_fans_raw"] = []
-                st.session_state["_prev_canvas_key"] = None
-                # Also clear flow-limit state
                 st.session_state["flow_limits"] = []
                 st.session_state["flow_polygon_points_temp"] = []
+                st.session_state["poly_canvas_counter"] += 1
+                st.session_state.pop("sim_results", None)
                 for k in list(st.session_state.keys()):
                     if k.startswith("saved_obs_size_") or k.startswith("airfree_angle_"):
                         del st.session_state[k]
@@ -621,12 +616,11 @@ def render():
     st.subheader("Dibuja ventiladores y obstaculos")
 
     if is_polygon_mode:
-        # ── Obstacle polygon drawing mode ──────────────────────────────────────
         temp_pts = st.session_state["polygon_points_temp"]
         st.caption("Haz clic en el canvas para agregar vertices del obstaculo.")
         preview_img = _draw_polygon_preview(
             bg_image, temp_pts,
-            saved_fans_raw=st.session_state.get("saved_fans_raw", []),
+            canvas_fan_objects=_get_canvas_fan_objects(),
             saved_obstacles=st.session_state.get("saved_obstacles", []),
             flow_limits=st.session_state.get("flow_limits", []),
         )
@@ -640,7 +634,7 @@ def render():
             height=h,
             drawing_mode="point",
             point_display_radius=5,
-            key=str(st.session_state["sim_canvas_key"]) + "_poly",
+            key=f"poly_canvas_{st.session_state['poly_canvas_counter']}",
             display_toolbar=False,
         )
         if canvas_result.json_data is not None:
@@ -675,26 +669,25 @@ def render():
                         "transmission": SIZE_TRANSMISSION[obs_size_main],
                     })
                     st.session_state["polygon_points_temp"] = []
-                    st.session_state["sim_canvas_key"] = f"canvas_{np.random.randint(0, 1000000)}"
+                    st.session_state["poly_canvas_counter"] += 1
                     st.rerun()
             with col_fin2:
                 if st.button("Cancelar Polígono", key="cancelar_main"):
                     st.session_state["polygon_points_temp"] = []
-                    st.session_state["sim_canvas_key"] = f"canvas_{np.random.randint(0, 1000000)}"
+                    st.session_state["poly_canvas_counter"] += 1
                     st.rerun()
         elif n_pts > 0:
             if st.button("Cancelar Polígono", key="cancelar_main_early"):
                 st.session_state["polygon_points_temp"] = []
-                st.session_state["sim_canvas_key"] = f"canvas_{np.random.randint(0, 1000000)}"
+                st.session_state["poly_canvas_counter"] += 1
                 st.rerun()
 
     elif is_flow_polygon_mode:
-        # ── Flow-limit polygon drawing mode ────────────────────────────────────
         fp_pts = st.session_state["flow_polygon_points_temp"]
         st.caption("🟣 Haz clic en el canvas para añadir vértices del delimitador de flujo.")
         preview_img = _draw_polygon_preview(
             bg_image, [],
-            saved_fans_raw=st.session_state.get("saved_fans_raw", []),
+            canvas_fan_objects=_get_canvas_fan_objects(),
             saved_obstacles=st.session_state.get("saved_obstacles", []),
             flow_limits=st.session_state.get("flow_limits", []),
             temp_flow_points=fp_pts,
@@ -710,7 +703,7 @@ def render():
             height=h,
             drawing_mode="point",
             point_display_radius=5,
-            key=str(st.session_state["sim_canvas_key"]) + "_flow_poly",
+            key=f"flow_canvas_{st.session_state['poly_canvas_counter']}",
             display_toolbar=False,
         )
         if canvas_result.json_data is not None:
@@ -737,60 +730,56 @@ def render():
                         "points": list(st.session_state["flow_polygon_points_temp"]),
                     })
                     st.session_state["flow_polygon_points_temp"] = []
-                    st.session_state["sim_canvas_key"] = f"canvas_{np.random.randint(0, 1000000)}"
+                    st.session_state["poly_canvas_counter"] += 1
                     st.rerun()
             with col_fp2:
                 if st.button("Cancelar", key="cancel_flow_poly_main"):
                     st.session_state["flow_polygon_points_temp"] = []
-                    st.session_state["sim_canvas_key"] = f"canvas_{np.random.randint(0, 1000000)}"
+                    st.session_state["poly_canvas_counter"] += 1
                     st.rerun()
         elif n_fp > 0:
             if st.button("Cancelar", key="cancel_flow_poly_main_early"):
                 st.session_state["flow_polygon_points_temp"] = []
-                st.session_state["sim_canvas_key"] = f"canvas_{np.random.randint(0, 1000000)}"
+                st.session_state["poly_canvas_counter"] += 1
                 st.rerun()
 
     else:
         st.caption("Circulo = abanico techo  |  Rectangulo = abanico AirFree pedestal")
-        current_key = str(st.session_state["sim_canvas_key"])
-        canvas_was_reset = st.session_state["_prev_canvas_key"] != current_key
-        st.session_state["_prev_canvas_key"] = current_key
-        fans_for_init = st.session_state.get("saved_fans_raw", []) if canvas_was_reset else []
-        initial = _build_initial_drawing(
-            w, h, st.session_state["saved_obstacles"],
-            saved_fans_raw=fans_for_init,
+        bg_with_overlays = _draw_obstacles_on_bg(
+            bg_image,
+            st.session_state.get("saved_obstacles", []),
+            st.session_state.get("flow_limits", []),
         )
         canvas_result = st_canvas(
-            fill_color="rgba(255, 165, 0, 0.2)",
-            stroke_width=2,
+            fill_color="rgba(255, 165, 0, 0.3)",
+            stroke_width=3,
             stroke_color=stroke_color,
             background_color="#ffffff",
-            background_image=bg_image,
+            background_image=bg_with_overlays,
+            update_streamlit=True,
             width=w,
             height=h,
             drawing_mode=drawing_mode,
-            initial_drawing=initial if len(initial["objects"]) > 0 else None,
-            key=current_key,
+            initial_drawing=st.session_state.get("canvas_data"),
+            key="canvas_principal",
             display_toolbar=True,
         )
 
     if canvas_result.json_data is None:
         return
 
-    objects = canvas_result.json_data.get("objects", [])
-
-    if not is_polygon_mode and not is_flow_polygon_mode:
-        fans_circ, fans_airfree, fans_oval, canvas_obstacles = parse_canvas_objects(objects)
-        raw_fans = [
-            obj for obj in objects
-            if obj.get("type", "") in ("circle", "rect", "ellipse")
-        ]
-        if raw_fans:
-            st.session_state["saved_fans_raw"] = raw_fans
+    if is_polygon_mode or is_flow_polygon_mode:
+        fan_objects = st.session_state.get("canvas_data", {}).get("objects", [])
     else:
-        fans_circ, fans_airfree, fans_oval, _ = parse_canvas_objects(
-            st.session_state.get("saved_fans_raw", [])
-        )
+        live_data = canvas_result.json_data
+        if st.session_state.pop("_save_canvas_requested", False):
+            st.session_state["canvas_data"] = live_data
+            st.toast("Posición de objetos guardada ✓")
+        fan_objects = live_data.get("objects", [])
+
+    objects = fan_objects
+
+    fans_circ, fans_airfree, fans_oval, canvas_obstacles = parse_canvas_objects(objects)
 
     # Update sidebar AirFree fan data for next render cycle
     if fans_airfree:
@@ -1083,12 +1072,25 @@ def render():
             )
 
             if st.button("Guardar Proyecto"):
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                os.makedirs("outputs", exist_ok=True)
+                os.makedirs("outputs/proyectos", exist_ok=True)
 
-                img_path = f"outputs/{timestamp}_resultado.png"
-                csv_path = f"outputs/{timestamp}_datos.csv"
-                orig_path = f"outputs/{timestamp}_original.png"
+                parametros = json.dumps({
+                    "temp_ambiente": ambient_temp,
+                    "velocidad": air_speed,
+                    "sensacion_termica": thermal_change,
+                    "fecha": sim_date.strftime("%Y-%m-%d"),
+                    "hora": sim_time.strftime("%H:%M"),
+                })
+
+                proyecto_id = crear_proyecto(
+                    nombre=nombre_proy,
+                    usuario_id=user["id"],
+                    parametros_json=parametros,
+                )
+
+                img_path = f"outputs/proyectos/proyecto_{proyecto_id}_mapa.png"
+                csv_path = f"outputs/proyectos/proyecto_{proyecto_id}_datos.csv"
+                orig_path = f"outputs/proyectos/proyecto_{proyecto_id}_original.png"
 
                 with open(img_path, "wb") as f:
                     f.write(sim_results["buf_img"])
@@ -1096,12 +1098,20 @@ def render():
                     f.write(sim_results["csv_data"])
                 bg_image.save(orig_path)
 
-                proyecto_id = create_proyecto(
-                    nombre=nombre_proy,
-                    admin_id=user["id"],
-                    imagen_original=orig_path,
-                    imagen_resultado=img_path,
-                    datos_csv=csv_path,
-                    asignado_a=None,
-                )
+                ruta_lineas = None
+                if sim_results.get("buf_stream") is not None:
+                    ruta_lineas = f"outputs/proyectos/proyecto_{proyecto_id}_lineas.png"
+                    with open(ruta_lineas, "wb") as f:
+                        f.write(sim_results["buf_stream"])
+
+                ruta_lateral = None
+                if sim_results.get("buf_side") is not None:
+                    ruta_lateral = f"outputs/proyectos/proyecto_{proyecto_id}_lateral.png"
+                    with open(ruta_lateral, "wb") as f:
+                        f.write(sim_results["buf_side"])
+
+                guardar_resultados_proyecto(proyecto_id, img_path, csv_path, ruta_lineas, ruta_lateral)
+                from utils.db import update_proyecto
+                update_proyecto(proyecto_id, imagen_original=orig_path)
+
                 st.success(f"Proyecto '{nombre_proy}' guardado exitosamente (ID: {proyecto_id}).")

@@ -1,0 +1,80 @@
+Implementa el selector de tema (Dark/Light) en la esquina superior derecha usando el siguiente método SIMPLE y COMPROBADO:
+
+## Paso 1: Eliminar cualquier selector de tema existente
+- Elimina cualquier botón o selector de tema que esté en el sidebar o en otras partes del código.
+
+## Paso 2: Agregar el nuevo selector en app.py
+
+Al inicio del archivo `app.py`, justo después de `st.set_page_config(...)`, agrega este código:
+
+```python
+# Inicializar tema si no existe
+if "app_theme" not in st.session_state:
+    st.session_state["app_theme"] = "dark"
+
+# Crear 3 columnas vacías para empujar el botón a la derecha
+col1, col2, col3 = st.columns([8, 1, 1])
+with col3:
+    # Mostrar icono según tema actual
+    if st.session_state["app_theme"] == "dark":
+        icono = "☀️"  # Sol para modo oscuro (cambiar a claro)
+        tooltip = "Cambiar a modo claro"
+    else:
+        icono = "🌙"  # Luna para modo claro (cambiar a oscuro)
+        tooltip = "Cambiar a modo oscuro"
+    
+    # Botón del tema
+    if st.button(icono, key="theme_toggle_top", help=tooltip):
+        if st.session_state["app_theme"] == "dark":
+            st.session_state["app_theme"] = "light"
+        else:
+            st.session_state["app_theme"] = "dark"
+        st.rerun()
+
+# Aplicar el tema usando CSS (esto ya debe existir en tu código)
+# Si no existe, agrega estas líneas:
+if st.session_state["app_theme"] == "dark":
+    st.markdown("""
+    <style>
+    .stApp { background-color: #0e1117; color: #ffffff; }
+    </style>
+    """, unsafe_allow_html=True)
+else:
+    st.markdown("""
+    <style>
+    .stApp { background-color: #ffffff; color: #000000; }
+    </style>
+    """, unsafe_allow_html=True)
+Paso 3: Ajustar el color del icono según el tema
+El icono (☀️ o 🌙) ya se ve bien por defecto, pero si quieres que el color del texto del botón cambie según el tema, agrega este CSS adicional:
+
+python
+if st.session_state["app_theme"] == "dark":
+    st.markdown("""
+    <style>
+    button[kind="secondary"] { color: white !important; }
+    </style>
+    """, unsafe_allow_html=True)
+else:
+    st.markdown("""
+    <style>
+    button[kind="secondary"] { color: black !important; }
+    </style>
+    """, unsafe_allow_html=True)
+Paso 4: Verificar que el botón esté en la esquina superior derecha
+El código usa st.columns([8,1,1]) para empujar el botón a la derecha.
+
+El botón aparecerá junto al menú de tres puntos de Streamlit.
+
+No interfiere con el botón de "loading".
+
+Nota importante
+Este método NO usa JavaScript, solo Streamlit nativo y CSS básico.
+
+Es 100% compatible con el entorno de Replit.
+
+Los iconos son símbolos Unicode (☀️ y 🌙), no emojis, pero se ven bien.
+
+Si prefieres iconos SVG, podemos agregarlos después, pero este método es más fiable para empezar.
+
+Implementa esto exactamente como se indica y el selector de tema funcionará sin errores.

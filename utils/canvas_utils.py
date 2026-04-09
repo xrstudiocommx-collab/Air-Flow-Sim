@@ -4,8 +4,8 @@ import math
 
 def parse_canvas_objects(objects):
     fans_circulares = []
-    fans_airfree = []   # rectangles (AirFree pedestal fans)
-    fans_ovales = []    # ellipses drawn directly
+    fans_airfree = []
+    fans_ovales = []
     obstacles = []
 
     for obj in objects:
@@ -20,10 +20,12 @@ def parse_canvas_objects(objects):
             radius = obj.get("radius", None)
             if radius is None:
                 radius = obj.get("width", 0) / 2
+            cx = left + radius
+            cy = top + radius
             fans_circulares.append({
                 "type": "circular",
-                "x": left + radius * scale_x,
-                "y": top + radius * scale_y,
+                "x": cx,
+                "y": cy,
                 "r": radius * max(scale_x, scale_y),
             })
 
@@ -42,8 +44,6 @@ def parse_canvas_objects(objects):
             })
 
         elif obj_type == "rect":
-            # AirFree pedestal fan: rectangle treated as a directional blower.
-            # half_w and half_h are the semi-dimensions.
             w = obj.get("width", 0) * scale_x
             h = obj.get("height", 0) * scale_y
             cx = left + w / 2
@@ -52,10 +52,10 @@ def parse_canvas_objects(objects):
                 "type": "airfree",
                 "x": cx,
                 "y": cy,
-                "half_w": w / 2,   # half width (local X axis)
-                "half_h": h / 2,   # half height (local Y axis)
+                "half_w": w / 2,
+                "half_h": h / 2,
                 "angle": angle,
-                "front_face": "right",  # default; overridden by UI
+                "front_face": "right",
             })
 
         elif obj_type == "polygon":
