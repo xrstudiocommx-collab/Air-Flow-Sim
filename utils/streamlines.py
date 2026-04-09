@@ -415,9 +415,8 @@ def render_streamlines_figure(bg_image, all_streamlines, fan_origins, sim_w, sim
         Segments in regions where convergence >= 2 are coloured navy blue.
     """
     fig, ax = plt.subplots(figsize=(10, img_height / img_width * 10))
-    ax.imshow(bg_image)
+    ax.imshow(bg_image, extent=[0, img_width, img_height, 0])
 
-    # Inverse scale: simulation coords → image-pixel coords
     inv_sx = img_width / sim_w
     inv_sy = img_height / sim_h
 

@@ -10,18 +10,21 @@ def parse_canvas_objects(objects):
 
     for obj in objects:
         obj_type = obj.get("type", "")
-        left = obj.get("left", 0)
-        top = obj.get("top", 0)
-        scale_x = obj.get("scaleX", 1)
-        scale_y = obj.get("scaleY", 1)
-        angle = obj.get("angle", 0)
+        left = float(obj.get("left", 0))
+        top = float(obj.get("top", 0))
+        scale_x = float(obj.get("scaleX", 1))
+        scale_y = float(obj.get("scaleY", 1))
+        angle = float(obj.get("angle", 0))
+        stroke_w = float(obj.get("strokeWidth", 0))
 
         if obj_type == "circle":
             radius = obj.get("radius", None)
             if radius is None:
-                radius = obj.get("width", 0) / 2
-            cx = left + radius
-            cy = top + radius
+                radius = float(obj.get("width", 0)) / 2
+            else:
+                radius = float(radius)
+            cx = left + (radius + stroke_w / 2.0) * scale_x
+            cy = top + (radius + stroke_w / 2.0) * scale_y
             fans_circulares.append({
                 "type": "circular",
                 "x": cx,
@@ -30,10 +33,10 @@ def parse_canvas_objects(objects):
             })
 
         elif obj_type == "ellipse":
-            rx = obj.get("rx", 0) * scale_x
-            ry = obj.get("ry", 0) * scale_y
-            cx = left + rx
-            cy = top + ry
+            rx = float(obj.get("rx", 0)) * scale_x
+            ry = float(obj.get("ry", 0)) * scale_y
+            cx = left + (stroke_w / 2.0) * scale_x + rx
+            cy = top + (stroke_w / 2.0) * scale_y + ry
             fans_ovales.append({
                 "type": "oval",
                 "x": cx,
@@ -44,10 +47,10 @@ def parse_canvas_objects(objects):
             })
 
         elif obj_type == "rect":
-            w = obj.get("width", 0) * scale_x
-            h = obj.get("height", 0) * scale_y
-            cx = left + w / 2
-            cy = top + h / 2
+            w = float(obj.get("width", 0)) * scale_x
+            h = float(obj.get("height", 0)) * scale_y
+            cx = left + (stroke_w / 2.0) * scale_x + w / 2
+            cy = top + (stroke_w / 2.0) * scale_y + h / 2
             fans_airfree.append({
                 "type": "airfree",
                 "x": cx,
@@ -62,7 +65,7 @@ def parse_canvas_objects(objects):
             pts = []
             if "points" in obj:
                 for p in obj["points"]:
-                    pts.append([p["x"] * scale_x + left, p["y"] * scale_y + top])
+                    pts.append([float(p["x"]) * scale_x + left, float(p["y"]) * scale_y + top])
             if len(pts) >= 3:
                 obstacles.append({
                     "points": np.array(pts, dtype=np.int32),

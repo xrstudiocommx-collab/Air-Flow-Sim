@@ -838,7 +838,7 @@ def render():
         _fig_fg = "#E0E0E0" if _theme == "Oscuro" else "#1a1a2e"
         fig, ax = plt.subplots(figsize=(10, h / w * 10))
         fig.patch.set_facecolor(_fig_bg)
-        ax.imshow(bg_image)
+        ax.imshow(bg_image, extent=[0, w, h, 0])
 
         display_intensity = total_intensity.copy()
         # Scale intensities so that the typical maximum maps to ~100 (0–100 scale)

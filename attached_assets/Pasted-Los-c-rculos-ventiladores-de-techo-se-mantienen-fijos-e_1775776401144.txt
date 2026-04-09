@@ -1,0 +1,50 @@
+Los círculos (ventiladores de techo) se mantienen fijos en el canvas interactivo, pero cuando se ejecuta "Generar Mapa de Calor" o "Mostrar líneas de corriente", aparecen desplazados unos pocos píxeles (o más notoriamente en el mapa 2D). Esto indica que las coordenadas usadas en la simulación no coinciden exactamente con las del canvas.
+
+## Causa probable
+- La imagen de fondo puede redimensionarse entre el canvas (donde se dibuja) y la simulación (donde se calcula el flujo).
+- El sistema de coordenadas del canvas (Fabric.js) puede usar el origen en la esquina superior izquierda del objeto, mientras que la simulación espera el centro.
+- Pequeños errores de redondeo en la conversión de píxeles a índices de grilla.
+
+## Solución requerida
+
+### 1. Asegurar que la imagen usada en simulación sea exactamente la misma (tamaño) que en el canvas
+- En `views/simulador.py`, cuando se carga la imagen, redimensionarla a un ancho fijo (ej. 800px) y guardar ese tamaño en `st.session_state["img_width"]` y `st.session_state["img_height"]`.
+- El canvas debe usar ese mismo tamaño (width, height).
+- La simulación debe generar la grilla con las mismas dimensiones (ancho x alto de la imagen redimensionada).
+
+### 2. Calcular centro del círculo de manera consistente
+En la simulación (para mapa de calor y líneas de corriente), usa exactamente la misma fórmula que en el canvas para obtener el centro del círculo:
+
+```python
+# Asumiendo que el objeto del canvas tiene:
+# - left: coordenada X de la esquina superior izquierda
+# - top: coordenada Y de la esquina superior izquierda
+# - radius: radio (o width/2 si no existe radius)
+if obj["type"] == "circle":
+    radius = obj.get("radius", obj.get("width", 0) / 2)
+    center_x = obj["left"] + radius
+    center_y = obj["top"] + radius
+No aplicar ninguna corrección de origen (originX/originY). Usar siempre left + radius.
+
+Asegurar que estos valores sean floats y no se redondeen prematuramente.
+
+3. Verificar que la grilla de simulación se alinea con la imagen
+La grilla debe tener el mismo número de píxeles que el ancho y alto de la imagen.
+
+Al mapear un punto (x_px, y_px) a la grilla, usar índices enteros: ix = int(x_px * (grid_width / img_width)), pero cuidado con el redondeo. Mejor usar interpolación lineal.
+
+Para el mapa de calor, las coordenadas de los centros de los círculos deben convertirse a índices de grilla de forma consistente.
+
+4. Prueba de alineación
+Dibuja un círculo en una esquina (ej. left=10, top=10, radius=20).
+
+Ejecuta simulación y verifica que la mancha azul (máxima intensidad) aparezca exactamente en esa posición (puedes superponer el mapa con transparencia).
+
+Si el desplazamiento persiste, imprime en la consola los valores de center_x, center_y y compáralos con los índices de grilla calculados.
+
+5. Ajuste fino
+Si el desplazamiento es sistemático (siempre unos pocos píxeles a la derecha/abajo), puede deberse a que Fabric.js usa strokeWidth que afecta las dimensiones. Excluye el stroke del cálculo del centro: usa obj["width"] sin stroke, o usa obj["radius"] si existe.
+
+Otra posibilidad: el canvas puede tener un borde o padding. Asegurar que el canvas y la imagen de fondo tengan el mismo origen (0,0) en la esquina superior izquierda.
+
+Implementa estas correciones y verifica que los círculos no se desplacen al ejecutar ninguna simulación. Añade comentarios en el código donde se realizan los cálculos de coordenadas.

@@ -74,5 +74,9 @@ Workflow: `streamlit run app.py --server.port 5000 --server.address 0.0.0.0`
 - CSS themes: `DARK_THEME_CSS` and `LIGHT_THEME_CSS` in `app.py` with targeted selectors
 - Base Streamlit theme in `config.toml` is "dark"; Light mode overrides via injected CSS
 
+## Coordinate Alignment
+- Canvas objects (circles, rects, ellipses) include `strokeWidth` in Fabric.js bounding box. The `canvas_utils.py` parser accounts for `strokeWidth/2` offset when computing center coordinates.
+- All `ax.imshow(bg_image)` calls use explicit `extent=[0, w, h, 0]` to match overlay coordinate systems (heatmap, streamlines, shadows).
+
 ## Note
 The streamlit-drawable-canvas library has a patched `__init__.py` to fix compatibility with newer Streamlit versions (base64 image encoding instead of removed `image_to_url`).
