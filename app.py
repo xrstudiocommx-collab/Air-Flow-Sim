@@ -120,6 +120,58 @@ LIGHT_THEME_CSS = """
     div[data-testid="stForm"] button span {
         color: #FFFFFF !important;
     }
+
+    div[data-baseweb="popover"] ul,
+    div[data-baseweb="popover"] li,
+    div[data-baseweb="menu"] ul,
+    div[data-baseweb="menu"] li {
+        background-color: #FFFFFF !important;
+        color: #1a1a2e !important;
+    }
+    div[data-baseweb="popover"] li:hover,
+    div[data-baseweb="menu"] li:hover {
+        background-color: #E8E8E8 !important;
+        color: #1a1a2e !important;
+    }
+    div[data-baseweb="popover"] li[aria-selected="true"],
+    div[data-baseweb="menu"] li[aria-selected="true"] {
+        background-color: #e0e0e0 !important;
+        color: #000000 !important;
+    }
+
+    div[data-testid="stSelectbox"] div[role="listbox"] div[aria-selected="true"] {
+        background-color: #e0e0e0 !important;
+        color: #000000 !important;
+    }
+
+    div[data-testid="stMultiSelect"] div[role="listbox"] div[data-selected="true"],
+    div[data-testid="stMultiSelect"] span[data-baseweb="tag"] {
+        background-color: #e0e0e0 !important;
+        color: #000000 !important;
+    }
+
+    div[role="radiogroup"] label[data-baseweb="radio"] div[aria-checked="true"] ~ span {
+        color: #000000 !important;
+    }
+
+    .stButton > button:active {
+        background-color: #cccccc !important;
+        color: #000000 !important;
+    }
+
+    .stDataFrame div[role="row"][aria-selected="true"],
+    .stDataFrame div[role="gridcell"][aria-selected="true"] {
+        background-color: #d0d0d0 !important;
+        color: #000000 !important;
+    }
+
+    div[data-baseweb="select"] span {
+        color: #1a1a2e !important;
+    }
+    div[data-baseweb="select"] svg {
+        fill: #1a1a2e !important;
+        color: #1a1a2e !important;
+    }
 </style>
 """
 
@@ -177,6 +229,35 @@ DARK_THEME_CSS = """
     }
     hr {
         border-color: #444 !important;
+    }
+
+    div[data-baseweb="popover"] ul,
+    div[data-baseweb="popover"] li,
+    div[data-baseweb="menu"] ul,
+    div[data-baseweb="menu"] li {
+        background-color: #2A2A3E !important;
+        color: #E0E0E0 !important;
+    }
+    div[data-baseweb="popover"] li:hover,
+    div[data-baseweb="menu"] li:hover {
+        background-color: #3A3A4E !important;
+        color: #FFFFFF !important;
+    }
+    div[data-baseweb="popover"] li[aria-selected="true"],
+    div[data-baseweb="menu"] li[aria-selected="true"] {
+        background-color: #3A3A4E !important;
+        color: #FFFFFF !important;
+    }
+    div[data-baseweb="select"] span {
+        color: #E0E0E0 !important;
+    }
+    div[data-baseweb="select"] svg {
+        fill: #E0E0E0 !important;
+        color: #E0E0E0 !important;
+    }
+    div[data-testid="stMultiSelect"] span[data-baseweb="tag"] {
+        background-color: #3A3A4E !important;
+        color: #E0E0E0 !important;
     }
 </style>
 """
