@@ -121,48 +121,68 @@ LIGHT_THEME_CSS = """
         color: #FFFFFF !important;
     }
 
-    div[data-baseweb="popover"] ul,
-    div[data-baseweb="popover"] li,
-    div[data-baseweb="menu"] ul,
-    div[data-baseweb="menu"] li {
-        background-color: #FFFFFF !important;
+    [aria-selected="true"] {
+        color: #000000 !important;
+        background-color: #e0e0e0 !important;
+    }
+
+    .stSelectbox [role="listbox"] [aria-selected="true"] {
+        color: #000000 !important;
+        background-color: #d0d0d0 !important;
+    }
+
+    .stDataFrame [role="row"][aria-selected="true"] {
+        color: #000000 !important;
+        background-color: #e0e0e0 !important;
+    }
+
+    [data-baseweb="radio"] [aria-checked="true"] + span {
+        color: #000000 !important;
+    }
+
+    .stDownloadButton button:active,
+    .stButton button:active {
+        color: #000000 !important;
+        background-color: #c0c0c0 !important;
+    }
+
+    [data-testid="stMultiSelect"] [data-selected="true"] {
+        color: #000000 !important;
+        background-color: #e0e0e0 !important;
+    }
+
+    [role="menuitem"][data-highlighted="true"],
+    [role="option"][data-highlighted="true"],
+    [role="option"][aria-selected="true"] {
+        color: #000000 !important;
+        background-color: #d0d0d0 !important;
+    }
+
+    [role="listbox"] [role="option"] {
         color: #1a1a2e !important;
+        background-color: #FFFFFF !important;
+    }
+    [role="listbox"] [role="option"]:hover {
+        background-color: #E8E8E8 !important;
+    }
+    [role="listbox"] [role="option"][aria-selected="true"] {
+        color: #000000 !important;
+        background-color: #d0d0d0 !important;
+    }
+
+    div[data-baseweb="popover"],
+    div[data-baseweb="popover"] ul {
+        background-color: #FFFFFF !important;
+    }
+    div[data-baseweb="popover"] li {
+        color: #1a1a2e !important;
+        background-color: #FFFFFF !important;
     }
     div[data-baseweb="popover"] li:hover,
-    div[data-baseweb="menu"] li:hover {
-        background-color: #E8E8E8 !important;
-        color: #1a1a2e !important;
-    }
     div[data-baseweb="popover"] li[aria-selected="true"],
-    div[data-baseweb="menu"] li[aria-selected="true"] {
-        background-color: #e0e0e0 !important;
+    div[data-baseweb="popover"] li[data-highlighted="true"] {
         color: #000000 !important;
-    }
-
-    div[data-testid="stSelectbox"] div[role="listbox"] div[aria-selected="true"] {
-        background-color: #e0e0e0 !important;
-        color: #000000 !important;
-    }
-
-    div[data-testid="stMultiSelect"] div[role="listbox"] div[data-selected="true"],
-    div[data-testid="stMultiSelect"] span[data-baseweb="tag"] {
-        background-color: #e0e0e0 !important;
-        color: #000000 !important;
-    }
-
-    div[role="radiogroup"] label[data-baseweb="radio"] div[aria-checked="true"] ~ span {
-        color: #000000 !important;
-    }
-
-    .stButton > button:active {
-        background-color: #cccccc !important;
-        color: #000000 !important;
-    }
-
-    .stDataFrame div[role="row"][aria-selected="true"],
-    .stDataFrame div[role="gridcell"][aria-selected="true"] {
         background-color: #d0d0d0 !important;
-        color: #000000 !important;
     }
 
     div[data-baseweb="select"] span {
@@ -271,10 +291,37 @@ HIDE_SIDEBAR_CSS = """
 """
 
 
+LIGHT_THEME_JS = """
+<script>
+(function() {
+    function fixSelectedColors() {
+        document.querySelectorAll('[aria-selected="true"], [data-selected="true"], [aria-checked="true"]').forEach(function(el) {
+            el.style.setProperty('color', '#000000', 'important');
+            el.style.setProperty('background-color', '#e0e0e0', 'important');
+        });
+        document.querySelectorAll('[role="option"]').forEach(function(el) {
+            if (el.getAttribute('aria-selected') !== 'true') {
+                el.style.setProperty('color', '#1a1a2e', 'important');
+                el.style.setProperty('background-color', '#FFFFFF', 'important');
+            }
+        });
+    }
+    if (document.readyState === 'complete' || document.readyState === 'interactive') {
+        fixSelectedColors();
+    } else {
+        document.addEventListener('DOMContentLoaded', fixSelectedColors);
+    }
+    setInterval(fixSelectedColors, 500);
+})();
+</script>
+"""
+
+
 def apply_theme():
     theme = st.session_state.get("app_theme", "Oscuro")
     if theme == "Claro":
         st.markdown(LIGHT_THEME_CSS, unsafe_allow_html=True)
+        st.markdown(LIGHT_THEME_JS, unsafe_allow_html=True)
     else:
         st.markdown(DARK_THEME_CSS, unsafe_allow_html=True)
 

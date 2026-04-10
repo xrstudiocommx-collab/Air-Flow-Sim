@@ -1,0 +1,74 @@
+El problema persiste: cuando selecciono un proyecto, un usuario o cualquier opción en un dropdown/selectbox/radio, el texto se vuelve negro sobre fondo negro (en tema claro). El CSS anterior no funcionó porque los selectores no son los correctos para los componentes reales de Streamlit.
+
+Solución: Usar selectores universales y !important para forzar el color del texto en elementos seleccionados en tema claro.
+
+## 1. Localiza el bloque de CSS del tema claro en app.py (light_theme_css o el que se inyecta condicionalmente).
+
+## 2. Reemplázalo o agrega estas reglas AL FINAL del bloque para que tengan prioridad:
+
+```css
+/* ===== FIX: Texto visible en elementos seleccionados (tema claro) ===== */
+/* Para cualquier elemento con atributo aria-selected="true" */
+[aria-selected="true"] {
+    color: #000000 !important;
+    background-color: #e0e0e0 !important;
+}
+
+/* Para los selectbox de Streamlit */
+.stSelectbox [role="listbox"] [aria-selected="true"] {
+    color: #000000 !important;
+    background-color: #d0d0d0 !important;
+}
+
+/* Para las filas seleccionadas en dataframes (st.dataframe) */
+.stDataFrame [role="row"][aria-selected="true"] {
+    color: #000000 !important;
+    background-color: #e0e0e0 !important;
+}
+
+/* Para los radio buttons seleccionados */
+[data-baseweb="radio"] [aria-checked="true"] + span {
+    color: #000000 !important;
+}
+
+/* Para los botones de descarga o cualquier botón en estado activo */
+.stDownloadButton button:active,
+.stButton button:active {
+    color: #000000 !important;
+    background-color: #c0c0c0 !important;
+}
+
+/* Para los chips de multiselect */
+[data-testid="stMultiSelect"] [data-selected="true"] {
+    color: #000000 !important;
+    background-color: #e0e0e0 !important;
+}
+
+/* Para los items de menú desplegable (popover) */
+[role="menuitem"][data-highlighted="true"],
+[role="option"][data-highlighted="true"] {
+    color: #000000 !important;
+    background-color: #d0d0d0 !important;
+}
+3. También agrega un pequeño script JavaScript para forzar el estilo en tiempo real (opcional pero recomendado):
+python
+st.markdown("""
+<script>
+// Forzar estilo para todos los elementos seleccionados dinámicamente
+document.addEventListener('DOMContentLoaded', function() {
+    function fixSelectedColors() {
+        document.querySelectorAll('[aria-selected="true"], [data-selected="true"], [aria-checked="true"]').forEach(el => {
+            el.style.color = '#000000';
+            el.style.backgroundColor = '#e0e0e0';
+        });
+    }
+    setInterval(fixSelectedColors, 500);
+    fixSelectedColors();
+});
+</script>
+""", unsafe_allow_html=True)
+4. Asegurar que estos estilos solo se apliquen cuando st.session_state["app_theme"] == "light".
+5. Limpiar caché del navegador (Ctrl+Shift+R o Cmd+Shift+R) y probar nuevamente.
+Si después de esto el problema persiste, significa que los componentes no son estándar de Streamlit. En ese caso, inspecciona manualmente el elemento (clic derecho > Inspeccionar) y dime la clase o atributo exacto del texto que se vuelve negro, para ajustar el selector.
+
+Implementa este cambio exactamente
