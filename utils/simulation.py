@@ -36,7 +36,7 @@ def compute_airfree_fan_intensity(fan, grid_x, grid_y, decay_rate, multiplier):
     Intensity rules:
         dist_elip <= 1  → multiplier  (core zone: inside the flow ellipse / rect interior)
         dist_elip >  1  → multiplier * exp(-(dist_elip - 1) * decay)
-        x_flow < 0      → 0  (no air behind the back face)
+        x_flow < 0      → epsilon (~1e-6, ambient temperature, renders red after normalization)
 
     a = 2 * u_extent  (length of core along flow)
     b = v_extent      (lateral half-width of aperture)
@@ -77,7 +77,7 @@ def compute_airfree_fan_intensity(fan, grid_x, grid_y, decay_rate, multiplier):
     y_norm = v / b
     dist_elip = np.sqrt(x_norm ** 2 + y_norm ** 2)
 
-    intensity = np.zeros_like(dist_elip, dtype=np.float32)
+    intensity = np.full_like(dist_elip, 1e-6, dtype=np.float32)
 
     # Core: elliptical interior (dist_elip <= 1) AND in front of back face
     core = (dist_elip <= 1.0) & (x_flow >= 0)
@@ -88,7 +88,7 @@ def compute_airfree_fan_intensity(fan, grid_x, grid_y, decay_rate, multiplier):
     intensity[decay_zone] = multiplier * np.exp(
         -(dist_elip[decay_zone] - 1.0) * decay_rate * max(a, b)
     )
-    # x_flow < 0 (behind back face) stays at 0
+    # x_flow < 0 (behind back face) keeps the epsilon ambient value
 
     return intensity
 
